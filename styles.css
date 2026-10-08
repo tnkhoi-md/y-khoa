@@ -286,3 +286,33 @@ details.pareto>summary{font-size:17px}
 .dchips .chip{min-width:30px;height:28px;line-height:28px;font-size:13px}
 #tree a.top{background:transparent;font-weight:600}
 #tree a.top.on{background:var(--accent-bg);color:var(--accent)}
+
+/* ===== Thanh module: Ung bướu › 1 … 5 ===== */
+:root{--mbar:42px;--hdr2:calc(var(--hdr) + var(--mbar))}
+.modbar{position:sticky;top:calc(var(--hdr) + env(safe-area-inset-top));z-index:9;display:flex;align-items:center;gap:4px;height:var(--mbar);padding:0 max(14px,env(safe-area-inset-left));overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;background:var(--panel);border-bottom:1px solid var(--line)}
+.modbar::-webkit-scrollbar{display:none}
+.modname{font-weight:800;color:var(--ink);text-decoration:none;padding:6px 6px 6px 2px;font-size:15px}
+.modname i{font-style:normal;margin-left:6px;color:var(--mute);font-weight:400}
+.modsec{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:18px;text-decoration:none;color:var(--ink);font-size:14px;font-weight:500;border:1px solid transparent}
+.modsec b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent-bg);color:var(--accent);font-size:12px}
+.modsec:hover{background:var(--accent-bg)}
+.modsec.on{background:var(--accent);color:#fff;font-weight:700}.modsec.on b{background:rgba(255,255,255,.25);color:#fff}
+aside{top:calc(var(--hdr2) + env(safe-area-inset-top));max-height:calc(100vh - var(--hdr2))}
+.dtabs{top:calc(var(--hdr2) + env(safe-area-inset-top))}
+.kctl{top:calc(var(--hdr2) + env(safe-area-inset-top))}
+.stepper li a{display:flex;align-items:center;gap:7px;text-decoration:none;color:inherit}
+.stepper li{padding:0}.stepper li a{padding:5px 12px 5px 6px}
+.stepper li a:hover{background:var(--accent-bg);border-radius:20px}
+.stepper b{background:var(--accent)}
+.rcard .chip.wide{margin-top:6px}
+.dchips .chip{min-width:36px}
+#tree details a{font-size:14px}
+@media (max-width:820px){
+  .modbar{top:calc(var(--hdr) + env(safe-area-inset-top))}
+  aside{top:calc(var(--hdr2) + env(safe-area-inset-top));inset:calc(var(--hdr2) + env(safe-area-inset-top)) 0 calc(58px + env(safe-area-inset-bottom)) 0}
+  .dtabs{top:calc(var(--hdr2) + env(safe-area-inset-top))}
+}
+.dt.sum{--c:var(--phacdo);margin-left:auto;background:var(--e-bg);border-color:var(--e-bd);color:var(--c-o)}
+.dt.sum.on{background:#b45309;color:#fff;border-color:#b45309}
+#tree a.top b{display:inline-block;min-width:18px;color:var(--accent)}
+.modsec{flex:0 0 auto}

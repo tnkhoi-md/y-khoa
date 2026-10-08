@@ -10,17 +10,52 @@ const LAYERS = [
 ];
 const LNAME = Object.fromEntries(LAYERS);
 // Khung các mục của một chuyên khoa (module)
+// Các tab của trang bệnh (số nội bộ trong file: 3–9; 10 = "Theo dõi" tách từ mục 8 khi hiển thị)
 const SECS = [
-  [3, "Bệnh học", "benh"],
+  [3, "Tổng quan", "benh"],
   [4, "Triệu chứng học", "trieuchung"],
   [5, "Cận lâm sàng", "cls"],
-  [6, "Chẩn đoán – Chẩn đoán phân biệt", "cls"],
+  [6, "Chẩn đoán", "cls"],
   [7, "Điều trị", "dieutri"],
-  [8, "Tiên lượng – Dự phòng", "phacdo"],
-  [9, "Tóm tắt cốt lõi (Pareto 80/20)", "nen"],
+  [10, "Theo dõi đánh giá", "phacdo"],
+  [8, "Tiên lượng – Dự phòng", "nen"],
 ];
-const SECNAME = Object.fromEntries(SECS.map(([n, t]) => [n, t]));
-const SECCOL = Object.fromEntries(SECS.map(([n, , c]) => [n, c]));
+const SECNAME = { ...Object.fromEntries(SECS.map(([n, t]) => [n, t])), 9: "Tóm tắt (Pareto)" };
+const SECCOL = { ...Object.fromEntries(SECS.map(([n, , c]) => [n, c])), 9: "phacdo" };
+// Khung thanh công cụ của một chuyên khoa
+const MODSECS = [
+  [1, "Tổng quan", "Giới thiệu chuyên khoa, mục tiêu cần đạt (thấp đến cao), các bệnh và vấn đề cần học."],
+  [2, "Nền tảng", "Cơ chế sinh ung thư, nguyên nhân, giải phẫu bệnh, xâm lấn – di căn, miễn dịch, phòng ngừa và tầm soát."],
+  [3, "Triệu chứng học", "Trình bày khái quát: các triệu chứng gợi ý ung thư và cách tiếp cận."],
+  [4, "Cận lâm sàng", "Trình bày khái quát các phương tiện và vai trò: hình ảnh, giải phẫu bệnh, dấu ấn, phân giai đoạn."],
+  [5, "Bệnh học", "Chi tiết từng bệnh: tổng quan, triệu chứng học, cận lâm sàng, chẩn đoán, điều trị, theo dõi, tiên lượng – dự phòng."],
+  [6, "Tóm tắt", "Tổng hợp trong một trang, từng bệnh theo nguyên lý Pareto (20% kiến thức mang 80% điểm)."],
+  [7, "Nguồn", "Tài liệu trong nước, văn bản Bộ Y tế và nguồn ngoài đã dùng cho từng bài."],
+  [8, "Tự đánh giá", "Các thẻ tự kiểm tra đã tạo (được lưu lại, tạm thời chưa xây dựng thêm)."],
+];
+// Số hiển thị trong trang bệnh: 5.1–5.7 (số nội bộ 3,4,5,6,7,10,8); 9 = Tóm tắt
+const DISPNUM = { 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 10: 6, 8: 7 };
+const dnum = n => n === 9 ? "★" : "5." + DISPNUM[n];
+
+// Mục của thanh công cụ (1–4) mà một bài chung thuộc về.
+function sectionOfNote(n) {
+  if (n.kind === "overview") return 1;
+  if (n.kind === "disease") return 5;
+  if (n.kind === "sources") return 7;
+  if (n.section) return n.section;           // gán trong frontmatter: section: 3 hoặc 4
+  return 2;                                  // mặc định: Nền tảng
+}
+
+// "Theo dõi" tách khỏi "Tiên lượng – Dự phòng": các tiêu đề ### bắt đầu bằng "Theo dõi"
+const FOLLOW_RE = /^theo dõi/i;
+
+// Đổi số mục nội bộ sang số hiển thị: tiêu đề "### 7.1 ..." và chữ "mục 7.3" trong liên kết nội bộ.
+function relabel(s) {
+  return s
+    .replace(/^(#{3,4}\s+)([3-9])\.(\d)(?=\s)/gm, (_, h, x, y) => `${h}${dnum(+x)}.${y}`)
+    .replace(/\[([^\]]*?)mục ([3-9])(?:\.(\d))?([^\]]*)\]\(#\/n\//g, (_, pre, x, y, post) => `[${pre}${+x === 9 ? "Tóm tắt" : "mục " + dnum(+x) + (y ? "." + y : "")}${post}](#/n/`);
+}
+
 const $ = s => document.querySelector(s);
 const byId = Object.fromEntries(NOTES.map(n => [n.id, n]));
 const byTitle = Object.fromEntries(NOTES.map(n => [n.title.toLowerCase(), n]));
@@ -145,6 +180,11 @@ function blocks(L) {
   return h.join("\n");
 }
 
+document.addEventListener("click", e => {
+  const b = e.target.closest('[data-act="toggleall"]'); if (!b) return;
+  const ds = [...document.querySelectorAll("details.pareto")], open = ds.some(d => !d.open);
+  ds.forEach(d => { d.open = open; });
+});
 // bấm tab trong nội dung
 document.addEventListener("click", e => {
   const b = e.target.closest(".tabbtn");
@@ -160,19 +200,26 @@ const diseases = () => NOTES.filter(n => n.kind === "disease").sort((a, b) => (a
 const GROUP_ORDER = ["Cơ chế và nguyên nhân", "Giải phẫu bệnh, xâm lấn, di căn, miễn dịch", "Triệu chứng và chẩn đoán chung", "Phòng ngừa và tầm soát"];
 function tree(cur, sec) {
   const mods = [...new Set(NOTES.map(n => n.module))];
-  const curN = byId[cur];
+  const curN = byId[cur], curSec = curN ? sectionOfNote(curN) : 0;
   $("#tree").innerHTML = mods.map(mod => {
-    const ns = NOTES.filter(n => n.module === mod);
-    const ov = ns.filter(n => n.kind === "overview"), fo = ns.filter(n => n.kind === "foundation"), di = diseases().filter(n => n.module === mod);
-    const other = ns.filter(n => !n.kind);
-    const link = (n, s) => `<a href="#/n/${n.id}${s ? "/" + s : ""}" class="${n.id === cur && (!s || +s === sec) ? "on" : ""}">${esc(n.short || n.title)}</a>`;
-    const foOpen = curN && curN.kind === "foundation";
-    const groups = [...new Set(fo.map(n => n.group || "Khác"))].sort((a, b) => (GROUP_ORDER.indexOf(a) + 99) % 99 - (GROUP_ORDER.indexOf(b) + 99) % 99);
+    const ns = NOTES.filter(n => n.module === mod), di = diseases().filter(n => n.module === mod);
+    const link = (n, s, label) => `<a href="#/n/${n.id}${s ? "/" + s : ""}" class="${n.id === cur && (!s || +s === sec) ? "on" : ""}">${esc(label || n.short || n.title)}</a>`;
+    const gen = k => ns.filter(n => n.kind === "foundation" && sectionOfNote(n) === k).sort((x, y) => (x.order || 99) - (y.order || 99));
+    const grouped = list => [...new Set(list.map(n => n.group || "Khác"))].sort((x, y) => (GROUP_ORDER.indexOf(x) + 99) % 99 - (GROUP_ORDER.indexOf(y) + 99) % 99)
+      .map(g => `<div class="lay">${esc(g)}</div>` + list.filter(n => (n.group || "Khác") === g).map(n => link(n)).join("")).join("");
+    const isDis = curN && curN.kind === "disease", open = c => c ? " open" : "";
+    const sub = (k, title, body, isOpen) => `<details${open(isOpen)}><summary><b>${k}</b> ${title}</summary>${body}</details>`;
+    const top = (k, label, on) => `<a class="top ${on ? "on" : ""}" href="#/m/${mod}/${k}"><b>${k}</b> ${label}</a>`;
+    const ms = h => (location.hash.match(/^#\/m\/[^/]+\/(\d)$/) || [])[1] === String(h);
     return `<details class="mod" open><summary>${esc(MODULES[mod] || mod)}</summary>
-      ${ov.map(n => `<a href="#/n/${n.id}" class="top ${n.id === cur ? "on" : ""}"><b>1</b> Tổng quan module</a>`).join("")}
-      <details${foOpen ? " open" : ""}><summary><b>2</b> Nền tảng <small>${fo.length}</small></summary>${groups.map(g => `<div class="lay">${esc(g)}</div>` + fo.filter(n => (n.group || "Khác") === g).sort((a, b) => (a.order || 99) - (b.order || 99)).map(n => link(n)).join("")).join("")}</details>
-      ${SECS.map(([num, name, c]) => `<details${curN && curN.kind === "disease" && sec === num ? " open" : ""}><summary style="--c:var(--${c})"><b>${num}</b> ${name}</summary>${di.map(n => link(n, num)).join("")}</details>`).join("")}
-      ${other.length ? `<details><summary>Khác <small>${other.length}</small></summary>${other.map(n => link(n)).join("")}</details>` : ""}
+      ${top(1, "Tổng quan", curSec === 1 && !ms(7))}
+      ${sub(2, `Nền tảng <small>${gen(2).length}</small>`, `<a href="#/m/${mod}/2">Tất cả bài nền tảng</a>` + grouped(gen(2)), curSec === 2)}
+      ${sub(3, "Triệu chứng học", `<a href="#/m/${mod}/3">Khái quát</a>` + gen(3).map(n => link(n)).join("") + `<div class="lay">Theo bệnh</div>` + di.map(d => link(d, 4, d.short || d.title)).join(""), curSec === 3 || (isDis && sec === 4))}
+      ${sub(4, "Cận lâm sàng", `<a href="#/m/${mod}/4">Khái quát phương tiện, vai trò</a>` + gen(4).map(n => link(n)).join("") + `<div class="lay">Theo bệnh</div>` + di.map(d => link(d, 5, d.short || d.title)).join(""), curSec === 4 || (isDis && (sec === 5 || sec === 6)))}
+      ${sub(5, "Bệnh học <small>chi tiết</small>", di.map(d => `<details${open(isDis && curN.id === d.id)}><summary>${esc(d.short || d.title)}</summary>${SECS.map(([num, name]) => link(d, num, dnum(num) + " " + name)).join("")}${link(d, 9, "★ Tóm tắt")}</details>`).join(""), isDis)}
+      ${top(6, "Tóm tắt", ms(6))}
+      ${top(7, "Nguồn", ms(7))}
+      ${top(8, "Tự đánh giá", ms(8))}
     </details>`;
   }).join("");
 }
@@ -184,6 +231,10 @@ function secAt(n, pos) {
   if (n.kind !== "disease") return 0;
   let s = 0, m; const re = /^## (\d)\./gm;
   while ((m = re.exec(n.body)) && m.index <= pos) s = +m[1];
+  if (s === 8) {   // nằm trong phần "Theo dõi" thì mở tab Theo dõi đánh giá
+    const heads = [...n.body.slice(0, pos).matchAll(/^###\s+(.*)$/gm)];
+    if (heads.length && FOLLOW_RE.test(heads[heads.length - 1][1]) && n.body.lastIndexOf("## 8.", pos) >= 0) return 10;
+  }
   return s;
 }
 function runSearch(raw) {
@@ -208,7 +259,8 @@ function renderResults() {
   box.innerHTML = hits.length ? hits.map(({ n, pos }) => {
     const sec = pos >= 0 ? secAt(n, pos) : 0;
     const href = `#/n/${n.id}${sec ? "/" + sec : ""}`;
-    const where = n.kind === "disease" ? (sec ? `${sec} ${SECNAME[sec]}` : "Trang bệnh") : (n.kind === "overview" ? "Tổng quan" : (n.group || "Nền tảng"));
+    const ms = MODSECS.find(s => s[0] === sectionOfNote(n));
+    const where = n.kind === "disease" ? (sec ? `${dnum(sec)} ${SECNAME[sec]}` : "Bệnh học") : (n.kind === "overview" ? "Tổng quan" : (ms ? ms[1] : "Nền tảng"));
     const snip = pos >= 0 ? esc(plain(n.body.slice(Math.max(0, pos - 40), pos + 90))) : "";
     return `<a href="${href}"><b>${esc(n.short || n.title)}</b> <span class="where">${esc(where)}</span>${snip ? `<small>…${snip}…</small>` : ""}</a>`;
   }).join("") : '<div class="none">Không có kết quả.</div>';
@@ -265,58 +317,92 @@ const DAYS = [0, 1, 3, 7, 21], DAY = 864e5;
 const allCards = NOTES.flatMap(cardsOf);
 const prog = () => store.get("ykkb_cards", {});
 const dueCards = () => { const p = prog(), now = Date.now(); return allCards.filter(c => !p[c.id] || p[c.id].due <= now); };
-function badge() { const n = dueCards().length; $("#dueBadge").textContent = n || ""; }
+function badge() { const el = $("#dueBadge"); if (el) el.textContent = dueCards().length || ""; }
 
 // ---- trang ----
+function hasPareto(d) { return /^## 9\.[^\n]*Pareto/m.test(d.body); }
+function diseaseGrid(ds) {
+  return `<div class="dgrid">${ds.map(d => { const { secs } = diseaseParts(d); return `<article class="dcard"><a class="dtitle" href="#/n/${d.id}/3">${esc(d.short || d.title)}</a>
+      <div class="dchips">${SECS.map(([n, t, c]) => secs[n] ? `<a class="chip" style="--c:var(--${c})" href="#/n/${d.id}/${n}" title="${dnum(n)} ${esc(t)}">${dnum(n)}</a>` : `<span class="chip off" title="${dnum(n)} ${esc(t)} (chưa có)">${dnum(n)}</span>`).join("")}</div>
+      <div class="dfoot">${hasPareto(d) ? `<a class="pill9" href="#/n/${d.id}/9">★ Tóm tắt</a>` : '<span class="meta">Tóm tắt: chưa có</span>'}${(d.khung || []).map(k => `<a class="chip wide" href="#/khung/${k}">STT ${k}</a>`).join("")}</div></article>`; }).join("")}</div>
+    <p class="legend2 meta">${SECS.map(([n, t, c]) => `<span><i class="dot" style="background:var(--${c})"></i>${dnum(n)} ${esc(t)}</span>`).join("")}</p>`;
+}
+
 function home() {
   const ds = diseases(), mod = Object.keys(MODULES)[0], mname = MODULES[mod] || mod;
-  const ov = NOTES.find(n => n.kind === "overview"), fo = NOTES.filter(n => n.kind === "foundation").length;
+  const fo = NOTES.filter(n => n.kind === "foundation").length;
   const nKhung = window.KHUNG ? window.KHUNG.items.length : 128;
   const recent = (store.get(RK, []) || []).map(r => ({ ...r, n: byId[r.id] })).filter(r => r.n).slice(0, 4);
   const due = dueCards().length;
-  const hasPareto = d => /^## 9\.[^\n]*Pareto/m.test(d.body);
   $("#main").style.maxWidth = "1080px";
   $("#main").innerHTML = `
   <section class="hero">
     <div class="herotxt"><h1>Y khoa KB</h1><p>Kho kiến thức ôn thi chứng chỉ hành nghề bác sĩ đa khoa: từ nền tảng đến phác đồ, mỗi bệnh một trang có tab.</p></div>
     <button class="herosearch" id="heroSearch"><span>⌕</span> Tìm bài, bệnh, thuốc… <kbd>/</kbd></button>
-    <div class="stats"><div><b>${NOTES.length}</b><span>bài</span></div><div><b>${ds.length}</b><span>bệnh</span></div><div><b>${fo}</b><span>bài nền tảng</span></div><div><b>${nKhung}</b><span>vấn đề khung thi</span></div></div>
+    <div class="stats"><div><b>${NOTES.length}</b><span>bài</span></div><div><b>${ds.length}</b><span>bệnh</span></div><div><b>${fo}</b><span>bài chung</span></div><div><b>${nKhung}</b><span>vấn đề khung thi</span></div></div>
   </section>
-  ${recent.length ? `<section><h2>Tiếp tục</h2><div class="rgrid">${recent.map(r => `<a class="rcard" href="#/n/${r.id}${r.sec ? "/" + r.sec : ""}"><small>${r.sec ? r.sec + " · " + SECNAME[r.sec] : esc(r.n.group || (r.n.kind === "overview" ? "Tổng quan" : "Bài"))}</small><b>${esc(r.n.short || r.n.title)}</b></a>`).join("")}</div></section>` : ""}
+  ${recent.length ? `<section><h2>Tiếp tục</h2><div class="rgrid">${recent.map(r => `<a class="rcard" href="#/n/${r.id}${r.sec ? "/" + r.sec : ""}"><small>${r.sec ? dnum(r.sec) + " · " + SECNAME[r.sec] : esc(r.n.group || (r.n.kind === "overview" ? "Tổng quan" : "Bài"))}</small><b>${esc(r.n.short || r.n.title)}</b></a>`).join("")}</div></section>` : ""}
   <section><h2>Chuyên khoa</h2>
-    <article class="spec"><div class="spechead"><span class="sdot"></span><div><h3>${esc(mname)}</h3><small>${ds.length} bệnh · ${fo} bài nền tảng · khung 1–9</small></div>
-      <div class="specact">${ov ? `<a class="btn p" href="#/n/${ov.id}">Tổng quan module</a>` : ""}<a class="btn" href="#/pareto">Ôn nhanh Pareto</a></div></div>
-      <ol class="stepper"><li><b>1</b>Tổng quan</li><li><b>2</b>Nền tảng</li>${SECS.map(([n, t, c]) => `<li style="--c:var(--${c})"><b>${n}</b>${esc(t.replace(/ \(Pareto 80\/20\)/, ""))}</li>`).join("")}</ol>
+    <article class="spec"><div class="spechead"><span class="sdot"></span><div><h3>${esc(mname)}</h3><small>${ds.length} bệnh · ${fo} bài chung</small></div>
+      <div class="specact"><a class="btn p" href="#/m/${mod}/1">Tổng quan module</a><a class="btn" href="#/m/${mod}/6">Tóm tắt Pareto</a></div></div>
+      <ol class="stepper">${MODSECS.map(([n, t]) => `<li><a href="#/m/${mod}/${n}"><b>${n}</b>${esc(t)}</a></li>`).join("")}</ol>
     </article>
   </section>
-  <section><h2>Bệnh</h2>
-    <div class="dgrid">${ds.map(d => { const { secs } = splitSections(d.body); return `<article class="dcard"><a class="dtitle" href="#/n/${d.id}/3">${esc(d.short || d.title)}</a>
-      <div class="dchips">${SECS.map(([n, t, c]) => secs[n] ? `<a class="chip" style="--c:var(--${c})" href="#/n/${d.id}/${n}" title="${n}. ${esc(t)}">${n}</a>` : `<span class="chip off" title="${n}. ${esc(t)} (chưa có)">${n}</span>`).join("")}</div>
-      <div class="dfoot">${hasPareto(d) ? `<a class="pill9" href="#/n/${d.id}/9">★ Pareto</a>` : '<span class="meta">Pareto: chưa có</span>'}${(d.khung || []).map(k => `<a class="chip wide" href="#/khung/${k}">STT ${k}</a>`).join("")}</div></article>`; }).join("")}</div>
-    <p class="legend2 meta">${SECS.map(([n, t, c]) => `<span><i class="dot" style="background:var(--${c})"></i>${n} ${esc(t.replace(/ \(Pareto 80\/20\)/, ""))}</span>`).join("")}</p>
-  </section>
+  <section><h2>Bệnh</h2>${diseaseGrid(ds)}</section>
   <section><h2>Công cụ</h2>
     <div class="tiles">
       <a class="tile" href="#/khung"><b>Khung 128 vấn đề</b><span>QĐ 22 + sách, lọc theo ung bướu</span></a>
-      <a class="tile" href="#/pareto"><b>Ôn nhanh Pareto</b><span>20% kiến thức mang 80% điểm</span></a>
+      <a class="tile" href="#/m/ung-buou/6"><b>Tóm tắt Pareto</b><span>Một trang, từng bệnh</span></a>
       <a class="tile" href="#/graph"><b>Sơ đồ liên kết</b><span>Mắc xích giữa các bài</span></a>
-      <a class="tile" href="#/cards"><b>Ôn thẻ</b><span>${due} thẻ đến hạn</span></a>
+      <a class="tile" href="#/m/ung-buou/8"><b>Tự đánh giá</b><span>${due} thẻ đến hạn</span></a>
     </div>
   </section>`;
   $("#heroSearch").onclick = focusSearch;
 }
 
-function pareto() {
-  const ds = diseases();
-  const parts = ds.map((d, i) => {
-    const { secs } = splitSections(d.body), s9 = secs[9];
-    if (!s9 || !/Pareto/.test(s9.title)) return "";
-    let body = s9.body; const cut = body.search(/^@@fold!?\s+(Nguồn|Tự kiểm tra)/m);
-    if (cut >= 0) body = body.slice(0, cut);
-    return `<details class="fold pareto"${i === 0 ? " open" : ""}><summary>${esc(d.short || d.title)} <a class="chip wide" href="#/n/${d.id}/9">mở trang bệnh</a></summary>${md(body)}</details>`;
-  }).join("");
-  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: "Ôn nhanh Pareto" }])}<h1>Ôn nhanh Pareto 80/20</h1>
-    <p class="meta">20% kiến thức mang 80% điểm: tóm tắt cốt lõi mục 9 của từng bệnh, đọc một lượt trước khi thi. Chi tiết và nguồn xem trang bệnh.</p>${parts || "<p>Chưa có mục 9 nào.</p>"}`;
+// Trang giới thiệu của từng mục trên thanh công cụ (2–5)
+function modSection(mod, k) {
+  const [, title, desc] = MODSECS.find(s => s[0] === k) || [k, "", ""];
+  const ns = NOTES.filter(n => n.module === mod), di = diseases().filter(n => n.module === mod);
+  const gen = ns.filter(n => n.kind === "foundation" && sectionOfNote(n) === k).sort((x, y) => (x.order || 99) - (y.order || 99));
+  const card = n => `<a class="rcard" href="#/n/${n.id}"><small>${esc(n.group || "")}</small><b>${esc(n.short || n.title)}</b></a>`;
+  const byDisease = (secNums) => `<div class="rgrid">${di.map(d => `<div class="rcard"><b>${esc(d.short || d.title)}</b>${secNums.map(s => `<a class="chip wide" href="#/n/${d.id}/${s}">${dnum(s)} ${esc(SECNAME[s])}</a>`).join("")}</div>`).join("")}</div>`;
+  let body = "";
+  if (k === 2) {
+    const groups = [...new Set(gen.map(n => n.group || "Khác"))].sort((x, y) => (GROUP_ORDER.indexOf(x) + 99) % 99 - (GROUP_ORDER.indexOf(y) + 99) % 99);
+    body = groups.map(g => `<section><h2>${esc(g)}</h2><div class="rgrid">${gen.filter(n => (n.group || "Khác") === g).map(card).join("")}</div></section>`).join("");
+  } else if (k === 3) {
+    body = `<section><h2>Bài khái quát</h2>${gen.length ? `<div class="rgrid">${gen.map(card).join("")}</div>` : "<p class='meta'>Chưa có.</p>"}</section>
+      <section><h2>Triệu chứng học theo từng bệnh</h2>${byDisease([4])}</section>`;
+  } else if (k === 4) {
+    body = `<section><h2>Bài khái quát: phương tiện và vai trò</h2>${gen.length ? `<div class="rgrid">${gen.map(card).join("")}</div>` : "<p class='meta'>Chưa có.</p>"}</section>
+      <section><h2>Cận lâm sàng và chẩn đoán theo từng bệnh</h2>${byDisease([5, 6])}</section>`;
+  } else if (k === 5) {
+    body = `<section>${diseaseGrid(di)}</section>`;
+  } else if (k === 6) {
+    body = `<p><button class="btn" data-act="toggleall">Mở / đóng tất cả</button></p>` + di.map((d, i) => {
+      const s9 = diseaseParts(d).secs[9]; if (!s9) return "";
+      return `<details class="fold pareto"${i === 0 ? " open" : ""}><summary>${esc(d.short || d.title)} <a class="chip wide" href="#/n/${d.id}/9">mở trang bệnh</a></summary>${md(relabel(summaryOnly(s9.body)))}</details>`;
+    }).join("");
+  } else if (k === 7) {
+    const st = ns.find(n => n.kind === "sources");
+    body = (st ? `<section>${md(st.body)}</section>` : "") +
+      `<section><h2>Nguồn theo từng bệnh</h2>` + di.map(d => {
+        const s9 = diseaseParts(d).secs[9], b = s9 ? s9.body : "";
+        const doc = foldBody(b, "Nguồn tài liệu"), ext = foldBody(b, "Nguồn ngoài");
+        return `<details class="fold"><summary>${esc(d.short || d.title)}</summary>${d.source ? `<p class="meta">Nguồn chính: ${esc(d.source)}</p>` : ""}${doc ? `<h3>Nguồn tài liệu</h3>${md(doc)}` : ""}${ext ? `<h3>Nguồn ngoài tài liệu</h3>${md(ext)}` : ""}</details>`;
+      }).join("") + `</section>` +
+      `<section><h2>Nguồn theo từng bài chung</h2><div class="tw"><table><thead><tr><th>Bài</th><th>Nguồn</th></tr></thead><tbody>${ns.filter(n => n.kind === "foundation").map(n => `<tr><td><a href="#/n/${n.id}">${esc(n.short || n.title)}</a></td><td>${esc(n.source || "")}</td></tr>`).join("")}</tbody></table></div></section>`;
+  } else if (k === 8) {
+    const withCards = ns.map(n => ({ n, c: cardsOf(n) })).filter(x => x.c.length);
+    const total = withCards.reduce((s, x) => s + x.c.length, 0);
+    body = `<div class="callout note"><div class="ct">Ghi chú</div><p>Các thẻ tự kiểm tra đã tạo được <b>lưu lại</b>. Hiện <b>tạm thời chưa xây dựng thêm</b>.</p></div>
+      <p><b>${total}</b> thẻ trong <b>${withCards.length}</b> bài · <a class="btn p" href="#/cards">Bắt đầu ôn thẻ (lặp lại ngắn quãng)</a></p>` +
+      withCards.map(({ n, c }) => `<details class="fold"><summary>${esc(n.short || n.title)} <small>${c.length} thẻ</small></summary>${c.map(x => `<details class="card"><summary>${inline(x.q)}</summary><div>${inline(x.a)}</div></details>`).join("")}</details>`).join("");
+  }
+  $("#main").style.maxWidth = "1080px";
+  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[mod] || mod, href: `#/m/${mod}/1` }, { t: `${k} ${title}` }])}<h1>${k}. ${esc(title)}</h1><p class="meta">${esc(desc)}</p>${body}`;
+  window.scrollTo(0, 0);
 }
 
 function related(id) {
@@ -333,20 +419,43 @@ function splitSections(body) {
   for (let k = 1; k < parts.length; k += 3) secs[+parts[k]] = { title: parts[k + 1].trim(), body: parts[k + 2] };
   return { pre: parts[0], secs };
 }
+// Các mục hiển thị của một bệnh: tách "Theo dõi" khỏi mục 8
+function diseaseParts(n) {
+  const { pre, secs } = splitSections(n.body), out = { ...secs };
+  if (secs[8]) {
+    const parts = secs[8].body.split(/^(?=###\s)/m);
+    const follow = parts.filter(p => FOLLOW_RE.test(p.replace(/^###\s+/, "")));
+    out[8] = { title: "Tiên lượng – Dự phòng", body: parts.filter(p => !follow.includes(p)).join("") };
+    if (follow.length) out[10] = { title: "Theo dõi đánh giá", body: follow.join("") };
+  }
+  return { pre, secs: out };
+}
+// Phần Tóm tắt (trước các thẻ gập nguồn / tự kiểm tra) và nội dung một thẻ gập theo tên
+function summaryOnly(body) { const cut = body.search(/^@@fold!?\s+(Nguồn|Tự kiểm tra)/m); return cut >= 0 ? body.slice(0, cut) : body; }
+function foldBody(body, prefix) {
+  const L = body.split("\n"), re = new RegExp("^@@fold!?\\s+" + prefix, "i"), i = L.findIndex(l => re.test(l.trim()));
+  if (i < 0) return "";
+  let d = 1, j = i + 1;
+  for (; j < L.length; j++) { const t = L[j].trim(); if (/^@@(tabs|fold)/.test(t)) d++; else if (t === "@@end" && --d === 0) break; }
+  return L.slice(i + 1, j).join("\n");
+}
 
 function diseasePage(n, sec) {
-  const { pre, secs } = splitSections(n.body);
+  const { pre, secs } = diseaseParts(n);
   const have = SECS.filter(([num]) => secs[num]).map(([num]) => num);
-  sec = secs[sec] ? sec : have[0];
+  const isSummary = +sec === 9 && secs[9];
+  sec = isSummary ? 9 : (secs[sec] ? sec : have[0]);
   const khung = (n.khung || []).map(k => `<a class="chip wide" href="#/khung/${k}">Khung STT ${k}</a>`).join("");
   pushRecent(n.id, sec);
-  $("#main").innerHTML = `<div class="dhead">${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[n.module] || n.module, href: "#/n/ung-buou-tong-quan" }, { t: sec + ". " + SECNAME[sec] }, { t: n.short || n.title }])}
+  const mod = n.module, body = isSummary ? summaryOnly(secs[9].body) : secs[sec].body;
+  const crumbLast = isSummary ? "★ Tóm tắt" : `${dnum(sec)} ${SECNAME[sec]}`;
+  $("#main").innerHTML = `<div class="dhead">${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[mod] || mod, href: `#/m/${mod}/1` }, { t: "5 Bệnh học", href: `#/m/${mod}/5` }, { t: n.short || n.title, href: `#/n/${n.id}/3` }, { t: crumbLast }])}
     <h1>${esc(n.title)}</h1>
     <div class="meta">${n.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")} ${khung}</div></div>
-    <div class="dtabs">${SECS.filter(([num]) => secs[num]).map(([num, t, c]) => `<a class="dt${num === sec ? " on" : ""}" style="--c:var(--${c})" href="#/n/${n.id}/${num}"><b>${num}</b> ${t}</a>`).join("")}</div>
-    ${sec === have[0] && pre.trim() ? `<div class="pre">${md(pre)}</div>` : ""}
-    <h2 class="sech" style="--c:var(--${SECCOL[sec]})">${sec}. ${esc(secs[sec].title || SECNAME[sec])}</h2>
-    ${md(secs[sec].body)}
+    <div class="dtabs">${SECS.filter(([num]) => secs[num]).map(([num, t, c]) => `<a class="dt${num === sec ? " on" : ""}" style="--c:var(--${c})" href="#/n/${n.id}/${num}"><b>${dnum(num)}</b> ${t}</a>`).join("")}${secs[9] ? `<a class="dt sum${isSummary ? " on" : ""}" href="#/n/${n.id}/9">★ Tóm tắt</a>` : ""}</div>
+    ${!isSummary && sec === have[0] && pre.trim() ? `<div class="pre">${md(relabel(pre))}</div>` : ""}
+    <h2 class="sech" style="--c:var(--${SECCOL[sec]})">${isSummary ? "★ Tóm tắt cốt lõi (Pareto 80/20)" : dnum(sec) + " " + esc(SECNAME[sec])}</h2>
+    ${md(relabel(body))}
     ${n.source ? `<p class="meta srcline">Nguồn: ${esc(n.source)}</p>` : ""}
     <details class="fold"><summary>Liên kết tới bài khác</summary>${related(n.id)}</details>`;
   window.scrollTo(0, 0);
@@ -357,8 +466,9 @@ function note(id, sec) {
   const n = byId[id];
   if (!n) { $("#main").innerHTML = "<h1>Không tìm thấy bài</h1>"; return; }
   if (n.kind === "disease") return diseasePage(n, +sec || 0);
-  pushRecent(n.id, 0);
-  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[n.module] || n.module }, { t: n.kind === "overview" ? "1 Tổng quan" : "2 Nền tảng" + (n.group ? " · " + n.group : "") }])}${pill(n.layer)}
+  const k = sectionOfNote(n), mod = n.module, ms = MODSECS.find(s => s[0] === k);
+  pushRecent(id, 0);
+  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[mod] || mod, href: `#/m/${mod}/1` }, ...(k > 1 ? [{ t: `${k} ${ms[1]}`, href: `#/m/${mod}/${k}` }] : [{ t: "1 Tổng quan" }])])}${pill(n.layer)}
     <h1>${esc(n.title)}</h1>
     <div class="meta">${n.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")}${n.source ? ` Nguồn: ${esc(n.source)}` : ""}</div>
     ${md(n.body)}
@@ -436,17 +546,34 @@ function graph() {
   draw();
 }
 
+// ---- thanh module: Ung bướu › 1 … 5 ----
+function renderModbar(active) {
+  const mod = Object.keys(MODULES)[0];
+  $("#modbar").innerHTML = `<a class="modname" href="#/m/${mod}/1">${esc(MODULES[mod] || mod)}<i>›</i></a>` +
+    MODSECS.map(([n, t]) => `<a class="modsec${n === active ? " on" : ""}" href="#/m/${mod}/${n}"><b>${n}</b>${esc(t)}</a>`).join("");
+  const on = $("#modbar .modsec.on"); if (on) on.scrollIntoView({ inline: "center", block: "nearest" });   // khổ hẹp: cuộn tới mục đang chọn
+}
+
 // ---- định tuyến ----
 function route() {
   cancelAnimationFrame(raf);
   $("#main").style.maxWidth = ""; $("#side").classList.remove("open");
-  const h = decodeURIComponent(location.hash.slice(1)) || "/", m = h.match(/^\/n\/([^/]+)(?:\/(\d))?$/);
-  let sec = 0;
+  let h = decodeURIComponent(location.hash.slice(1)) || "/";
+  if (h === "/pareto") h = "/m/ung-buou/6";
+  const m = h.match(/^\/n\/([^/]+)(?:\/(\d+))?$/), mm = h.match(/^\/m\/([^/]+)\/(\d)$/);
+  let sec = 0, modActive = 0;
   const kh = h.match(/^\/khung(?:\/(\d+))?$/);
   if (kh) { $("#main").style.maxWidth = "1000px"; window.renderKhung($("#main"), kh[1]); }
-  else if (m) sec = note(m[1], m[2]) || 0; else if (h === "/graph") graph(); else if (h === "/cards") cards(); else if (h === "/pareto") pareto(); else home();
-  const navKey = kh ? "khung" : h === "/graph" ? "graph" : h === "/cards" ? "cards" : h === "/pareto" ? "pareto" : !m ? "home" : "";
+  else if (mm) {
+    const k = +mm[2], ov = NOTES.find(n => n.module === mm[1] && n.kind === "overview");
+    modActive = k;
+    if (k === 1 && ov) note(ov.id); else modSection(mm[1], k);
+  }
+  else if (m) { sec = note(m[1], m[2]) || 0; modActive = byId[m[1]] ? sectionOfNote(byId[m[1]]) : 0; }
+  else if (h === "/graph") graph(); else if (h === "/cards") cards(); else home();
+  const navKey = kh ? "khung" : h === "/graph" ? "graph" : h === "/cards" ? "cards" : (mm && +mm[2] === 6) ? "summary" : (!m && !mm) ? "home" : "";
   document.querySelectorAll("[data-nav]").forEach(x => x.classList.toggle("on", x.dataset.nav === navKey));
+  renderModbar(modActive);
   tree(m && m[1], sec || (m && +m[2]) || 0);
   const bd = $("#build"); if (bd) bd.textContent = window.BUILD ? "Bản dựng: " + window.BUILD : "";
   badge();
