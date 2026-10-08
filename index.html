@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Y khoa KB</title>
+<meta name="theme-color" content="#0f766e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Y khoa KB">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+<script>try{var t=localStorage.getItem("ykkb_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;var f=parseFloat(localStorage.getItem("ykkb_fs"));if(f)document.documentElement.style.setProperty("--fs",f)}catch(e){}</script>
+</head>
+<body>
+<header class="top">
+  <button id="menuBtn" class="ib" aria-label="Mục lục" title="Mục lục">☰</button>
+  <a class="brand" href="#/"><img src="icons/icon-192.png" alt=""><span>Y khoa KB</span></a>
+  <div class="gsearch" id="gsearch">
+    <input id="q" type="search" placeholder="Tìm bài, bệnh, thuốc…" autocomplete="off" aria-label="Tìm kiếm">
+    <kbd class="slash">/</kbd>
+    <div id="results" hidden></div>
+  </div>
+  <nav class="topnav" id="topnav">
+    <a href="#/" data-nav="home">Trang chủ</a>
+    <a href="#/khung" data-nav="khung">Khung 128</a>
+    <a href="#/pareto" data-nav="pareto">Pareto</a>
+    <a href="#/graph" data-nav="graph">Sơ đồ</a>
+    <a href="#/cards" data-nav="cards">Ôn thẻ <span id="dueBadge"></span></a>
+  </nav>
+  <div class="setwrap">
+    <button id="setBtn" class="ib" aria-label="Cài đặt hiển thị" title="Cỡ chữ, giao diện">Aa</button>
+    <div id="setPanel" hidden>
+      <div class="srow"><span>Cỡ chữ</span>
+        <span class="seg"><button data-fs="0.9">A−</button><button data-fs="1">A</button><button data-fs="1.12">A+</button><button data-fs="1.25">A++</button></span></div>
+      <div class="srow"><span>Giao diện</span>
+        <span class="seg"><button data-th="auto">Tự động</button><button data-th="light">Sáng</button><button data-th="dark">Tối</button></span></div>
+    </div>
+  </div>
+</header>
+<div class="layout">
+  <aside id="side">
+    <div id="tree"></div>
+    <p class="meta" id="build"></p>
+  </aside>
+  <main id="main"></main>
+</div>
+<nav class="botnav" id="botnav">
+  <a href="#/" data-nav="home"><i>⌂</i><span>Trang chủ</span></a>
+  <button id="bnMenu"><i>☰</i><span>Mục lục</span></button>
+  <button id="bnSearch"><i>⌕</i><span>Tìm</span></button>
+  <a href="#/pareto" data-nav="pareto"><i>★</i><span>Pareto</span></a>
+  <a href="#/khung" data-nav="khung"><i>▤</i><span>Khung 128</span></a>
+</nav>
+<div id="lock" hidden>
+  <div class="lockbox">
+    <h1>Y khoa KB</h1>
+    <p class="meta">Nội dung được mã hóa. Nhập mật khẩu để mở.</p>
+    <input id="lock-pw" type="password" placeholder="Mật khẩu" autocomplete="current-password">
+    <label class="lockrem"><input id="lock-rem" type="checkbox" checked> Ghi nhớ trên thiết bị này</label>
+    <button id="lock-go" class="b p">Mở</button>
+    <p id="lock-msg" class="lockmsg"></p>
+  </div>
+</div>
+<script src="lock.js"></script>
+</body>
+</html>
