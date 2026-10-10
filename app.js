@@ -255,10 +255,97 @@ function groupList(mod, k) {
   return [...ord.filter(g => present.includes(g)), ...present.filter(g => !ord.includes(g))];
 }
 const gId = (mod, k, g) => "grp-" + groupList(mod, k).indexOf(g);
+// ---- Thư viện học tập: tra cứu theo loại kiến thức, gom từ mọi chuyên khoa ----
+// [khóa, tên, mô tả, màu (--s…), tab bệnh liên quan]: loại của một bài lấy từ `lib` của nhóm/mục trong _module.json hoặc `lib:` trong bài
+const LIBS = [
+  ["trieuchung", "Triệu chứng học", "Từ triệu chứng và hội chứng đến chẩn đoán: hỏi bệnh, khám, bệnh án.", "s3", [4]],
+  ["benhhoc", "Bệnh học", "Cơ chế, nguyên nhân và từng bệnh: lâm sàng, chẩn đoán, điều trị, tiên lượng.", "s5", []],
+  ["cls", "Cận lâm sàng", "Chọn và đọc xét nghiệm, hình ảnh, giải phẫu bệnh, phân giai đoạn.", "s4", [5, 6]],
+  ["capcuu", "Cấp cứu", "Nhận diện nhanh và xử trí ban đầu các tình huống cấp cứu.", "s6", []],
+  ["dieutri", "Điều trị", "Nguyên tắc và phương pháp điều trị.", "s10", [7, 10]],
+  ["phongngua", "Phòng ngừa", "Phòng ngừa, tầm soát, tiên lượng và theo dõi.", "s2", [8]],
+];
+function libOf(n) {
+  if (n.lib) return n.lib;
+  if (n.kind === "disease") return "benhhoc";
+  if (n.kind !== "foundation") return "";
+  const sp = secOf(n.module, sectionOfNote(n));
+  const g = sp.type === "groups" ? (sp.groups || []).find(x => gKey(x) === (n.group || "Khác")) : null;
+  return (g && g.lib) || sp.lib || "";
+}
+function libItems(cat) {
+  const tabs = (LIBS.find(l => l[0] === cat) || [])[4] || [];
+  return Object.keys(MODULES).map(mod => {
+    const notes = NOTES.filter(n => n.module === mod && n.kind === "foundation" && libOf(n) === cat).sort((a, b) => {
+      const sa = sectionOfNote(a), sb = sectionOfNote(b);
+      return sa - sb || groupList(mod, sa).indexOf(a.group || "Khác") - groupList(mod, sb).indexOf(b.group || "Khác") || (a.order || 99) - (b.order || 99);
+    });
+    return { mod, notes, di: diseases().filter(d => d.module === mod), tabs };
+  }).filter(x => x.notes.length || (x.di.length && (cat === "benhhoc" || x.tabs.length)));
+}
+const libCount = cat => cat === "trieuchung" ? sympCount() : libItems(cat).reduce((c, x) => c + x.notes.length + ((cat === "benhhoc" || x.tabs.length) ? x.di.length : 0), 0);
+// các tab của từng bệnh thuộc một loại (ví dụ Điều trị = tab 7 của mọi bệnh)
+const diseaseChips = (di, tabs, mod) => `<div class="rgrid">${di.map(d => { const { secs } = diseaseParts(d); const have = tabs.filter(t => secs[t]); return have.length ? `<div class="rcard"><b>${esc(d.short || d.title)}</b>${have.map(t => `<a class="chip wide" href="#/n/${d.id}/${t}">${dnum(t, mod)} ${esc(SECNAME[t])}</a>`).join("")}</div>` : ""; }).join("")}</div>`;
+// Triệu chứng học xếp theo LÝ DO ĐẾN KHÁM, không theo bệnh: mỗi vấn đề của Khung 128 (đau bụng, nôn ói, vàng da…)
+// dẫn tới các bài tiếp cận và các bệnh cần nghĩ tới. Liên kết lấy từ `khung:` trong frontmatter của bài và của bệnh.
+function sympRows() {
+  const K = window.KHUNG; if (!K) return [];
+  const gname = Object.fromEntries(((K.qd22 || {}).groups || []).map(g => [g.id, g.name]));
+  const fo = NOTES.filter(n => n.kind === "foundation" && (n.khung || []).length), ds = diseases();
+  return K.items.map(it => ({ no: it.no, title: it.title, group: it.group, gname: gname[it.group] || "Khác",
+    notes: fo.filter(n => n.khung.includes(it.no)), di: ds.filter(d => (d.khung || []).includes(it.no)) }));
+}
+const sympGeneral = () => NOTES.filter(n => n.kind === "foundation" && libOf(n) === "trieuchung" && !(n.khung || []).length);
+const sympCount = () => sympRows().filter(r => r.notes.length || r.di.length).length + sympGeneral().length;
+function symptomPage(L) {
+  const [, title, , col] = L, rows = sympRows(), gen = sympGeneral(), nEmpty = rows.filter(r => !r.notes.length && !r.di.length).length;
+  const modTag = m => esc(MODULES[m] || m);
+  const chipN = n => `<a class="chip wide" href="#/n/${n.id}" title="${modTag(n.module)}">${esc(n.short || n.title)}</a>`;
+  const chipD = (d, multi) => `<a class="chip wide dz" href="#/n/${d.id}/4" title="${modTag(d.module)}">${esc(d.short || d.title)}${multi ? ` <small>· ${modTag(d.module)}</small>` : ""}</a>`;   // nhiều chuyên khoa trong một dòng: ghi rõ chuyên khoa
+  const byG = {}; rows.forEach(r => (byG[r.group] = byG[r.group] || { name: r.gname, rows: [] }).rows.push(r));
+  const list = Object.entries(byG).sort((a, b) => a[0] - b[0]).map(([, G]) => `<section class="symgrp"><h2>${esc(G.name)}</h2>${G.rows.map(r => {
+    const any = r.notes.length || r.di.length;
+    return `<div class="symrow${any ? "" : " empty"}" data-t="${esc(noDia(r.title))}"><div class="symhead"><span class="no">${r.no}</span><b>${esc(r.title)}</b><a class="chip wide" href="#/khung/${r.no}" title="Mở trong Đề cương ôn thi">Đề cương</a></div>${r.notes.length ? `<div class="symline"><span>Cách tiếp cận</span>${r.notes.map(chipN).join("")}</div>` : ""}${r.di.length ? `<div class="symline"><span>Bệnh cần nghĩ tới</span>${r.di.map(d => chipD(d, new Set(r.di.map(x => x.module)).size > 1)).join("")}</div>` : ""}${any ? "" : `<div class="symline meta">Chưa có bài.</div>`}</div>`;
+  }).join("")}</section>`).join("");
+  $("#main").style.maxWidth = "1080px";
+  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: "Thư viện học tập", href: "#/lib" }, { t: title }])}
+    <header class="cover" style="--c:var(--${col})"><h1>${esc(title)}</h1><p>Bệnh nhân đến khám vì một lý do: đau bụng, đau đầu, nôn ói, vàng da… Chọn lý do đến khám để đọc cách tiếp cận, hỏi bệnh tiếp, rồi xem các bệnh cần nghĩ tới. Các vấn đề theo Khung 128 của kỳ thi.</p></header>
+    <div class="symctl"><input id="symq" type="search" placeholder="Lọc theo lý do đến khám: đau bụng, ho, vàng da…" autocomplete="off"><label><input type="checkbox" id="symall"> Hiện cả vấn đề chưa có bài (${nEmpty})</label></div>
+    <div class="modpage" style="--c:var(--${col})">${list}
+      ${gen.length ? `<section class="symgen"><h2>Hỏi bệnh, khám và bệnh án</h2><p class="meta">Kỹ năng và khái quát dùng chung cho mọi lý do đến khám.</p><div class="rgrid">${gen.map(n => `<a class="rcard" href="#/n/${n.id}"><small>${modTag(n.module)}</small><b>${esc(n.short || n.title)}</b></a>`).join("")}</div></section>` : ""}</div>`;
+  const apply = () => {
+    const q = noDia($("#symq").value.trim()), all = $("#symall").checked;
+    document.querySelectorAll(".symrow").forEach(r => { r.hidden = !!((q && !r.dataset.t.includes(q)) || (r.classList.contains("empty") && !all && !q)); });
+    document.querySelectorAll(".symgrp").forEach(g => { g.hidden = ![...g.querySelectorAll(".symrow")].some(r => !r.hidden); });
+  };
+  $("#symq").oninput = apply; $("#symall").onchange = apply; apply();
+  window.scrollTo(0, 0);
+}
+function libIndex() {
+  $("#main").style.maxWidth = "1080px";
+  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: "Thư viện học tập" }])}
+    <header class="cover" style="--c:var(--brand)"><h1>Thư viện học tập</h1><p>Tra cứu theo loại kiến thức, gom từ mọi chuyên khoa. Muốn học theo trình tự của một chuyên khoa thì vào mục Module.</p></header>
+    <div class="rgrid libgrid">${LIBS.map(([k, t, d, col]) => `<a class="rcard lib" style="--c:var(--${col})" href="#/lib/${k}"><small>${libCount(k)} mục</small><b>${esc(t)}</b><span>${esc(d)}</span></a>`).join("")}</div>`;
+  window.scrollTo(0, 0);
+}
+function libPage(cat) {
+  const L = LIBS.find(l => l[0] === cat); if (!L) return libIndex();
+  if (cat === "trieuchung") return symptomPage(L);
+  const [, title, desc, col] = L, items = libItems(cat);
+  const body = items.map(({ mod, notes, di, tabs }) => `<section><h2>${esc(MODULES[mod] || mod)}</h2>
+    ${notes.length ? `<div class="rgrid">${notes.map(n => `<a class="rcard" href="#/n/${n.id}"><small>${esc(secOf(mod, sectionOfNote(n)).title)}${n.group ? " · " + esc(gSide(mod, n.group)) : ""}</small><b>${esc(n.short || n.title)}</b></a>`).join("")}</div>` : ""}
+    ${cat === "benhhoc" ? (di.length ? `<h3>Từng bệnh</h3>${diseaseGrid(di, mod)}` : "") : (tabs.length && di.length ? `<h3>Theo từng bệnh</h3>${diseaseChips(di, tabs, mod)}` : "")}
+  </section>`).join("") || `<p class="meta">Chưa có bài nào thuộc loại này.</p>`;
+  $("#main").style.maxWidth = "1080px";
+  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: "Thư viện học tập", href: "#/lib" }, { t: title }])}
+    <header class="cover" style="--c:var(--${col})"><h1>${esc(title)}</h1><p>${esc(desc)}</p></header>
+    <div class="modpage" style="--c:var(--${col})">${body}</div>`;
+  window.scrollTo(0, 0);
+}
 function tree(cur, sec) {
   const curN = byId[cur], curSec = curN ? sectionOfNote(curN) : +((location.hash.match(/^#\/m\/[^/]+\/(\d+)$/) || [])[1] || 0);   // đang ở trang mục thì mở đúng mục đó
   const here = curMod(), hashM = location.hash.match(/^#\/m\/([^/]+)\/(\d+)$/) || [];
-  $("#tree").innerHTML = Object.keys(MODULES).map(mod => {
+  const modsHtml = Object.keys(MODULES).map(mod => {
     const ns = NOTES.filter(n => n.module === mod), di = diseases().filter(n => n.module === mod);
     const isHere = mod === here;
     const link = (n, s, label, c) => `<a href="#/n/${n.id}${s ? "/" + s : ""}" class="${n.id === cur && (!s || +s === sec) ? "on" : ""}"${c ? ` style="--c:var(--${c})"` : ""}>${esc(label || n.short || n.title)}</a>`;
@@ -281,6 +368,10 @@ function tree(cur, sec) {
       ${rows.join("\n      ")}
     </details>`;
   }).join("");
+  const libCur = (location.hash.match(/^#\/lib\/([^/]+)/) || [])[1] || "", isHome = !location.hash || location.hash === "#/" || location.hash === "#";
+  $("#tree").innerHTML = `<a class="sbhome${isHome ? " on" : ""}" href="#/"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5"/><path d="M6 10.5V19h12v-8.5"/></svg><span>Trang chủ</span></a>
+    <div class="sbh">Module</div>${modsHtml}
+    <div class="sbh"><a href="#/lib">Thư viện học tập</a></div>${LIBS.map(([k, t, , col]) => `<a class="sblib${libCur === k ? " on" : ""}" style="--c:var(--${col})" href="#/lib/${k}"><span>${esc(t)}</span><small>${libCount(k)}</small></a>`).join("")}`;
 }
 // ---- thanh công cụ: tìm kiếm, cài đặt hiển thị, điều hướng dưới (điện thoại) ----
 const noDia = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
@@ -338,22 +429,21 @@ document.addEventListener("keydown", e => {
 });
 function focusSearch() { $("#gsearch").classList.add("open"); qEl.focus(); qEl.select(); }
 document.addEventListener("click", e => {
-  if (!e.target.closest(".setwrap")) $("#setPanel").hidden = true;
   if (!e.target.closest("#gsearch") && !e.target.closest("#bnSearch")) { $("#results").hidden = true; $("#gsearch").classList.remove("open"); }
 });
 // Mục lục bên trái: điện thoại mở như ngăn kéo; máy tính ẩn/hiện và nhớ lựa chọn trên thiết bị này
 const narrow = () => matchMedia("(max-width:820px)").matches;
 const setSideOff = off => {
   document.documentElement.classList.toggle("side-off", off);
-  $("#menuBtn").setAttribute("aria-expanded", String(!off));
+  $("#sideEdge").setAttribute("aria-expanded", String(!off));
 };
 const toggleSide = () => {
-  if (narrow()) return $("#side").classList.toggle("open");
+  if (narrow()) { const open = $("#side").classList.toggle("open"); return $("#sideEdge").setAttribute("aria-expanded", String(open)); }
   const off = !document.documentElement.classList.contains("side-off");
   setSideOff(off);
   try { off ? localStorage.setItem("ykkb_side", "off") : localStorage.removeItem("ykkb_side"); } catch {}
 };
-$("#menuBtn").onclick = toggleSide; $("#bnMenu").onclick = toggleSide;
+$("#sideEdge").onclick = toggleSide; $("#bnMenu").onclick = toggleSide;
 $("#bnSearch").onclick = e => { e.stopPropagation(); focusSearch(); };
 // cỡ chữ và giao diện (lưu trên từng thiết bị)
 const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } }, lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} };
@@ -365,7 +455,6 @@ function applyPrefs() {
   $("#setPanel").querySelectorAll("[data-fs]").forEach(b => b.classList.toggle("on", Math.abs(parseFloat(b.dataset.fs) - fs) < .01));
   $("#setPanel").querySelectorAll("[data-th]").forEach(b => b.classList.toggle("on", b.dataset.th === th));
 }
-$("#setBtn").onclick = e => { e.stopPropagation(); $("#setPanel").hidden = !$("#setPanel").hidden; };
 $("#setPanel").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.fs) lsSet("ykkb_fs", b.dataset.fs);
@@ -400,7 +489,7 @@ function diseaseGrid(ds, mod = curMod()) {
 }
 
 function home() {
-  const ds = diseases(), mods = Object.keys(MODULES), cm = curMod();
+  const ds = diseases(), mods = Object.keys(MODULES), cm = curMod();   // cm: chuyên khoa xem gần nhất
   const fo = NOTES.filter(n => n.kind === "foundation").length;
   const nKhung = window.KHUNG ? window.KHUNG.items.length : 128;
   const recent = (store.get(RK, []) || []).map(r => ({ ...r, n: byId[r.id] })).filter(r => r.n).slice(0, 4);
@@ -419,17 +508,26 @@ function home() {
     <button class="herosearch" id="heroSearch"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg> Tìm bài, bệnh, thuốc… <kbd>/</kbd></button>
     <div class="stats"><div><b>${NOTES.length}</b><span>bài</span></div><div><b>${ds.length}</b><span>bệnh</span></div><div><b>${fo}</b><span>bài chung</span></div><div><b>${nKhung}</b><span>vấn đề khung thi</span></div></div>
   </section>
-  ${recent.length ? `<section><h2>Tiếp tục</h2><div class="rgrid">${recent.map(r => `<a class="rcard" href="#/n/${r.id}${r.sec ? "/" + r.sec : ""}"><small>${r.sec ? dnum(r.sec, r.n.module) + " · " + SECNAME[r.sec] : esc(r.n.group || (r.n.kind === "overview" ? "Tổng quan" : "Bài"))}</small><b>${esc(r.n.short || r.n.title)}</b></a>`).join("")}</div></section>` : ""}
-  <section><h2>Chuyên khoa</h2>${mods.map(article).join("")}</section>
-  ${mods.map(mod => { const dsm = ds.filter(n => n.module === mod); return dsm.length ? `<section><h2>Bệnh${mods.length > 1 ? " · " + esc(MODULES[mod] || mod) : ""}</h2>${diseaseGrid(dsm, mod)}</section>` : ""; }).join("")}
-  <section><h2>Công cụ</h2>
-    <div class="tiles">
-      <a class="tile" href="#/khung"><b>Khung 128 vấn đề</b><span>QĐ 22 + sách, lọc theo chuyên khoa</span></a>
-      ${sumN ? `<a class="tile" href="#/m/${cm}/${sumN}"><b>Tóm tắt Pareto</b><span>Một trang, từng bệnh</span></a>` : ""}
-      <a class="tile" href="#/graph"><b>Sơ đồ liên kết</b><span>Mắc xích giữa các bài</span></a>
-      ${cardN ? `<a class="tile" href="#/m/${cm}/${cardN}"><b>Tự đánh giá</b><span>${due} thẻ đến hạn</span></a>` : ""}
+  <section class="intro"><h2>Giới thiệu</h2>
+    <p>Học tập Y khoa là kho kiến thức cá nhân để ôn thi chứng chỉ hành nghề bác sĩ đa khoa. Nội dung được soạn lại từ giáo trình giảng dạy và văn bản của Bộ Y tế; các nhận định chính đều gắn nguồn (tên tài liệu và số trang) để kiểm tra lại. Đây là tài liệu học tập, không thay cho hướng dẫn chuyên môn hay quyết định lâm sàng.</p>
+    <div class="rgrid">
+      <a class="rcard lib" style="--c:var(--s5)" href="#/lib"><small>Tra theo loại</small><b>Thư viện học tập</b><span>Triệu chứng học, bệnh học, cận lâm sàng, cấp cứu, điều trị, phòng ngừa, gom từ mọi chuyên khoa.</span></a>
+      <a class="rcard lib" style="--c:var(--s2)" href="#/m/${cm}/1"><small>Học theo trình tự</small><b>Module</b><span>Mỗi chuyên khoa một lộ trình: tổng quan, nền tảng, bệnh học, tóm tắt.</span></a>
+      <a class="rcard lib" style="--c:var(--s3)" href="#/khung"><small>Bám đề thi</small><b>Đề cương ôn thi CCHN YKQGQ</b><span>Khung 128 vấn đề lâm sàng của kỳ thi, nối tới các bài liên quan.</span></a>
+      <a class="rcard lib" style="--c:var(--s10)" href="#/cards"><small>Tự kiểm tra</small><b>Ôn thẻ</b><span>${due} thẻ đến hạn, lặp lại ngắn quãng.</span></a>
     </div>
-  </section>`;
+  </section>
+  <section><h2>Cách đọc một trang</h2>
+    <div class="legend3">
+      <div class="callout key"><div class="ct">Ý chính</div><p>Điều cần nhớ nhất của bài.</p></div>
+      <div class="callout warn"><div class="ct">Lưu ý – bẫy thi</div><p>Chỗ dễ nhầm và nơi các nguồn khác nhau.</p></div>
+      <div class="callout red"><div class="ct">Cấp cứu – nguy hiểm</div><p>Dấu hiệu cần xử trí hoặc chuyển tuyến ngay.</p></div>
+    </div>
+    <p>Ô nguồn như <span class="src">Y5 tr.12</span> cho biết ý lấy từ trang nào của tài liệu nào. Ô <span class="src">Notion</span> là phần bổ sung từ ghi chú chép lại giáo trình cũ, chỉ dùng khi giáo trình mới không có; khi hai nguồn khác nhau, bài theo nguồn mới hơn và ghi rõ chỗ khác. Chữ "tài liệu không nêu" nghĩa là nguồn đã dùng không trả lời điểm đó.</p>
+  </section>
+  <section><h2>Chuyên khoa</h2>${mods.map(article).join("")}</section>
+  ${recent.length ? `<section><h2>Tiếp tục</h2><div class="rgrid">${recent.map(r => `<a class="rcard" href="#/n/${r.id}${r.sec ? "/" + r.sec : ""}"><small>${r.sec ? dnum(r.sec, r.n.module) + " · " + SECNAME[r.sec] : esc(r.n.group || (r.n.kind === "overview" ? "Tổng quan" : "Bài"))}</small><b>${esc(r.n.short || r.n.title)}</b></a>`).join("")}</div></section>` : ""}
+`;
   $("#heroSearch").onclick = focusSearch;
 }
 
@@ -559,20 +657,83 @@ function note(id, sec) {
   window.scrollTo(0, 0);
 }
 
-function cards() {
-  const due = dueCards().sort(() => Math.random() - .5);
-  const p = prog();
-  const el = $("#main");
-  if (!due.length) { el.innerHTML = `<h1>Ôn thẻ</h1><div class="box">Hết thẻ đến hạn. Tổng ${allCards.length} thẻ.</div>`; return; }
-  const c = due[0];
-  el.innerHTML = `<h1>Ôn thẻ</h1><p class="meta">Còn ${due.length} thẻ đến hạn / ${allCards.length}. Từ bài <a href="#/n/${c.note}">${esc(byId[c.note].title)}</a></p>
-    <div class="box"><h3 style="margin-top:0">${inline(c.q)}</h3><div id="ans" style="display:none">${inline(c.a)}</div></div>
-    <div class="btns" id="b1"><button class="b p" id="show">Xem đáp án</button></div>
-    <div class="btns" id="b2" style="display:none"><button class="b" id="no">Chưa nhớ</button><button class="b p" id="yes">Nhớ</button></div>`;
-  $("#show").onclick = () => { $("#ans").style.display = "block"; $("#b1").style.display = "none"; $("#b2").style.display = "flex"; };
-  const rate = ok => { const box = ok ? Math.min((p[c.id]?.box ?? 0) + 1, 4) : 0; p[c.id] = { box, due: Date.now() + DAYS[box] * DAY }; store.set("ykkb_cards", p); badge(); cards(); };
-  $("#yes").onclick = () => rate(true); $("#no").onclick = () => { p[c.id] = { box: 0, due: Date.now() + 60e3 }; store.set("ykkb_cards", p); cards(); };
+// ---- ôn thẻ theo bệnh học: mỗi bệnh (hoặc bài chung) là một bộ thẻ; thẻ nhắc lại theo hộp Leitner ----
+const needReview = (c, p = prog(), now = Date.now()) => !p[c.id] || p[c.id].due <= now;
+const cardStat = list => { const p = prog(), now = Date.now(); let due = 0, nw = 0, mastered = 0; list.forEach(c => { const x = p[c.id]; if (!x) { nw++; due++; } else { if (x.due <= now) due++; if (x.box >= 3) mastered++; } }); return { total: list.length, due, nw, mastered }; };
+const cardPool = key => key === "_due" ? allCards : key.startsWith("mod:") ? allCards.filter(c => byId[c.note].module === key.slice(4)) : allCards.filter(c => c.note === key);
+let cardsMod = "", CS = null;   // cardsMod: chuyên khoa đang lọc ở danh sách; CS: phiên ôn đang chạy
+function cardsHome() {
+  const mods = Object.keys(MODULES).filter(m => !cardsMod || m === cardsMod), st = cardStat(allCards);
+  const byNote = {}; allCards.forEach(c => (byNote[c.note] = byNote[c.note] || []).push(c));
+  const deck = (n, col) => { const s = cardStat(byNote[n.id]); return `<div class="deck" style="--c:var(--${col})"><a class="dmain" href="#/cards/${n.id}"><b>${esc(n.short || n.title)}</b><span class="dmeta">${s.total} thẻ · ${s.due ? `<em>${s.due} cần ôn</em>` : "đã ôn xong"}</span><span class="dbar"><i style="width:${Math.round(100 * s.mastered / s.total)}%"></i></span></a><a class="dall" href="#/cards/${n.id}/all" title="Ôn lại cả bộ, kể cả thẻ chưa đến hạn">Ôn lại cả bộ</a></div>`; };
+  const sections = mods.map(mod => {
+    const ns = NOTES.filter(n => n.module === mod && byNote[n.id]);
+    const dis = ns.filter(n => n.kind === "disease").sort((a, b) => (a.order || 99) - (b.order || 99));
+    const fo = ns.filter(n => n.kind !== "disease");
+    const lib = LIBS.map(([k, t]) => [t, fo.filter(n => libOf(n) === k)]).concat([["Bài khác", fo.filter(n => !libOf(n))]]).filter(([, l]) => l.length);
+    const dueMod = cardStat(allCards.filter(c => byId[c.note].module === mod)).due;
+    return `<section><h2>${esc(MODULES[mod] || mod)}${dueMod ? ` <small class="cdue">${dueMod} cần ôn</small>` : ""}</h2>
+      ${dis.length ? `<h3>Theo bệnh học</h3><div class="decks">${dis.map(n => deck(n, "s5")).join("")}</div>` : ""}
+      ${lib.map(([t, l]) => `<h3>${esc(t)}</h3><div class="decks">${l.map(n => deck(n, "s3")).join("")}</div>`).join("")}
+      ${dis.length || fo.length ? "" : `<p class="meta">Chưa có thẻ.</p>`}</section>`;
+  }).join("");
+  $("#main").style.maxWidth = "1080px";
+  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: "Ôn thẻ" }])}
+    <header class="cover" style="--c:var(--s10)"><h1>Ôn thẻ theo bệnh học</h1><p>Mỗi bệnh là một bộ thẻ tự kiểm tra. Chọn bệnh để ôn các thẻ của bệnh đó, hoặc ôn gộp mọi thẻ cần ôn. Thẻ được nhắc lại theo quãng 10 phút, 1, 3, 7 và 21 ngày tùy mức bạn nhớ.</p></header>
+    <div class="cstats"><div><b>${st.total}</b><span>thẻ</span></div><div><b>${st.due}</b><span>cần ôn</span></div><div><b>${st.nw}</b><span>chưa học</span></div><div><b>${st.mastered}</b><span>đã thuộc</span></div></div>
+    <div class="cact"><a class="btn p" href="#/cards/${cardsMod ? "mod:" + cardsMod : "_due"}">Ôn tất cả thẻ cần ôn${cardsMod ? " của " + esc(MODULES[cardsMod] || cardsMod) : ""} (${cardStat(cardPool(cardsMod ? "mod:" + cardsMod : "_due")).due})</a>
+      ${Object.keys(MODULES).length > 1 ? `<span class="seg"><button data-cmod="" class="${cardsMod ? "" : "on"}">Tất cả</button>${Object.keys(MODULES).map(m => `<button data-cmod="${m}" class="${cardsMod === m ? "on" : ""}">${esc(MODULES[m] || m)}</button>`).join("")}</span>` : ""}</div>
+    ${sections}`;
+  document.querySelectorAll("[data-cmod]").forEach(b => { b.onclick = () => { cardsMod = b.dataset.cmod; cardsHome(); }; });
+  window.scrollTo(0, 0);
 }
+function startSession(key, all) {
+  const p = prog(), now = Date.now(), list = cardPool(key).filter(c => all || needReview(c, p, now));
+  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  CS = { key, all, queue: list, total: list.length, done: 0, counts: [0, 0, 0, 0] };
+}
+const deckTitle = key => key === "_due" ? "Tất cả thẻ cần ôn" : key.startsWith("mod:") ? (MODULES[key.slice(4)] || key.slice(4)) + ": thẻ cần ôn" : (byId[key] ? (byId[key].short || byId[key].title) : key);
+// trạng thái sau khi chấm: 0 Quên · 1 Khó · 2 Nhớ · 3 Dễ
+function nextState(c, r) {
+  const x = prog()[c.id], box = x ? x.box : 0;
+  if (r === 0) return { box: 0, due: Date.now() + 10 * 60e3, label: "10 phút" };
+  const nb = r === 1 ? Math.max(1, box) : Math.min(4, box + (r === 2 ? 1 : 2)), d = DAYS[nb] || 1;
+  return { box: nb, due: Date.now() + d * DAY, label: d + " ngày" };
+}
+function renderCard() {
+  const el = $("#main"), title = deckTitle(CS.key);
+  el.style.maxWidth = "760px";
+  const head = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: "Ôn thẻ", href: "#/cards" }, { t: title }])}`;
+  if (!CS.total) { el.innerHTML = `${head}<div class="cend"><h2>Không có thẻ cần ôn</h2><p>Bộ "${esc(title)}" không còn thẻ đến hạn.</p><p><a class="btn p" href="#/cards/${CS.key}/all">Ôn lại cả bộ</a> <a class="btn" href="#/cards">Về danh sách bộ thẻ</a></p></div>`; return; }
+  if (!CS.queue.length) {
+    const left = cardStat(cardPool(CS.key)).due, [q, k, nh, de] = CS.counts;
+    el.innerHTML = `${head}<div class="cend"><h2>Xong bộ thẻ</h2><p>Đã ôn <b>${CS.total}</b> thẻ: Quên ${q} lần · Khó ${k} · Nhớ ${nh} · Dễ ${de}.</p>${left ? `<p class="meta">Bộ này còn ${left} thẻ cần ôn.</p>` : ""}<p><a class="btn p" href="#/cards">Về danh sách bộ thẻ</a> <a class="btn" href="#/cards/${CS.key}/all">Ôn lại cả bộ</a></p></div>`;
+    return;
+  }
+  const c = CS.queue[0], n = byId[c.note], pct = Math.round(100 * CS.done / CS.total);
+  el.innerHTML = `${head}
+    <div class="cs-head"><b>${esc(title)}</b><span>${CS.done}/${CS.total}${CS.queue.length + CS.done > CS.total ? " · gồm thẻ ôn lại" : ""}</span></div><div class="cs-bar"><i style="width:${pct}%"></i></div>
+    <div class="cface" id="cface"><small class="cfrom">${esc(MODULES[n.module] || n.module)} · <a href="#/n/${n.id}${n.kind === "disease" ? "/9" : ""}">${esc(n.short || n.title)}</a></small><div class="cq">${inline(c.q)}</div><div class="ca" id="ca" hidden>${inline(c.a)}</div></div>
+    <div class="cbtns" id="cb1"><button class="b p" id="cshow">Xem đáp án <kbd>Space</kbd></button></div>
+    <div class="cbtns rate" id="cb2" hidden>${["Quên", "Khó", "Nhớ", "Dễ"].map((t, r) => `<button class="b r${r}" data-r="${r}"><b>${t}</b><small>${nextState(c, r).label}</small><kbd>${r + 1}</kbd></button>`).join("")}</div>`;
+  $("#cshow").onclick = () => { $("#ca").hidden = false; $("#cb1").hidden = true; $("#cb2").hidden = false; };
+  el.querySelectorAll("#cb2 [data-r]").forEach(b => { b.onclick = () => {
+    const r = +b.dataset.r, card = CS.queue.shift(), p = prog(), s = nextState(card, r);
+    p[card.id] = { box: s.box, due: s.due }; store.set("ykkb_cards", p); badge();
+    CS.counts[r]++; if (r === 0) CS.queue.push(card); else CS.done++;
+    renderCard();
+  }; });
+  window.scrollTo(0, 0);
+}
+function cards(key, all) {
+  if (!key) { CS = null; return cardsHome(); }
+  startSession(key, all); renderCard();
+}
+document.addEventListener("keydown", e => {   // phím tắt khi đang ôn: Space/Enter hiện đáp án; 1–4 chấm
+  if (!CS || !$("#cface") || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.metaKey || e.ctrlKey) return;
+  if (e.key === " " || e.key === "Enter") { const b = $("#cshow"); if (b && !$("#cb1").hidden) { e.preventDefault(); b.click(); } }
+  else if (/^[1-4]$/.test(e.key) && !$("#cb2").hidden) $("#cb2").querySelectorAll("[data-r]")[+e.key - 1].click();
+});
 
 // ---- sơ đồ liên kết ----
 let raf = 0;
@@ -649,7 +810,7 @@ function route() {
   if (h === "/pareto") h = `/m/${curMod()}/${secByType(curMod(), "summary")}`;
   const m = h.match(/^\/n\/([^/]+)(?:\/(\d+))?$/), mm = h.match(/^\/m\/([^/]+)\/(\d+)$/);
   let sec = 0, modActive = 0;
-  const kh = h.match(/^\/khung(?:\/(\d+))?$/);
+  const kh = h.match(/^\/khung(?:\/(\d+))?$/), lb = h.match(/^\/lib(?:\/([^/]+))?$/), cd = h.match(/^\/cards(?:\/([^/]+)(?:\/(all))?)?$/);
   if (kh) { $("#main").style.maxWidth = "1000px"; window.renderKhung($("#main"), kh[1]); }
   else if (mm) {
     const k = +mm[2], ov = NOTES.find(n => n.module === mm[1] && n.kind === "overview");
@@ -657,10 +818,12 @@ function route() {
     if (k === 1 && ov) note(ov.id); else modSection(mm[1], k);
   }
   else if (m) { sec = note(m[1], m[2]) || 0; modActive = byId[m[1]] ? sectionOfNote(byId[m[1]]) : 0; }
-  else if (h === "/graph") graph(); else if (h === "/cards") cards(); else home();
-  const navKey = kh ? "khung" : h === "/graph" ? "graph" : h === "/cards" ? "cards" : (mm && secOf(mm[1], +mm[2]).type === "summary") ? "summary" : (!m && !mm) ? "home" : "";
+  else if (lb) { lb[1] ? libPage(lb[1]) : libIndex(); }
+  else if (h === "/graph") graph(); else if (cd) cards(cd[1] || "", cd[2] === "all"); else home();
+  const navKey = kh ? "khung" : h === "/graph" ? "graph" : cd ? "cards" : lb ? "lib" : (!m && !mm) ? "home" : "";
   document.querySelectorAll("[data-nav]").forEach(x => x.classList.toggle("on", x.dataset.nav === navKey));
-  document.querySelectorAll('[data-nav="summary"]').forEach(x => { const cm = curMod(); x.setAttribute("href", `#/m/${cm}/${secByType(cm, "summary") || 1}`); });
+  const inMod = !!(mm || m);   // thanh mục của chuyên khoa chỉ hiện khi đang trong một chuyên khoa
+  $("#modbar").hidden = !inMod; document.documentElement.classList.toggle("no-modbar", !inMod);
   renderModbar(modActive);
   tree(m && m[1], sec || (m && +m[2]) || 0);
   const bd = $("#build"); if (bd) bd.textContent = window.BUILD ? "Bản dựng: " + window.BUILD : "";
