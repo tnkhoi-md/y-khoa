@@ -1,5 +1,5 @@
 (() => {
-const NOTES = window.NOTES || [], MODULES = window.MODULES || {};
+const NOTES = window.NOTES || [], MODULES = window.MODULES || {}, MODSPEC = window.MODSPEC || {};
 const LAYERS = [
   ["nen", "Nền tảng (sinh học PT, giải phẫu, sinh lý)"],
   ["trieuchung", "Triệu chứng – tiếp cận"],
@@ -23,28 +23,32 @@ const SECS = [
 const SECNAME = { ...Object.fromEntries(SECS.map(([n, t]) => [n, t])), 9: "Tóm tắt (Pareto)" };
 const SECCOL = { ...Object.fromEntries(SECS.map(([n, , c]) => [n, c])), 9: "tsum" };
 // Khung thanh công cụ của một chuyên khoa
-const MODSECS = [
-  [1, "Tổng quan", "Giới thiệu chuyên khoa, mục tiêu cần đạt (thấp đến cao), các bệnh và vấn đề cần học."],
-  [2, "Nền tảng", "Cơ chế sinh ung thư, nguyên nhân, giải phẫu bệnh, xâm lấn – di căn, miễn dịch, phòng ngừa và tầm soát."],
-  [3, "Triệu chứng học", "Trình bày khái quát: các triệu chứng gợi ý ung thư và cách tiếp cận."],
-  [4, "Cận lâm sàng", "Trình bày khái quát các phương tiện và vai trò: hình ảnh, giải phẫu bệnh, dấu ấn, phân giai đoạn."],
-  [5, "Bệnh học", "Chi tiết từng bệnh: tổng quan, triệu chứng học, cận lâm sàng, chẩn đoán, điều trị, theo dõi, tiên lượng – dự phòng."],
-  [6, "Bệnh án", "Cách làm một bệnh án ung thư: hành chính, bệnh sử, tiền sử, khám, cận lâm sàng, chẩn đoán, điều trị, tiên lượng."],
-  [7, "Tóm tắt", "Tổng hợp trong một trang, từng bệnh theo nguyên lý Pareto (20% kiến thức mang 80% điểm)."],
-  [8, "Nguồn", "Tài liệu trong nước, văn bản Bộ Y tế và nguồn ngoài đã dùng cho từng bài."],
-  [9, "Tự đánh giá", "Các thẻ tự kiểm tra đã tạo (được lưu lại, tạm thời chưa xây dựng thêm)."],
-];
+// ---- cấu trúc mục của từng chuyên khoa: khai báo trong 4-module/<module>/_module.json ----
+const specOf = mod => MODSPEC[mod] || { sections: [] };
+const secsOf = mod => specOf(mod).sections;
+const secOf = (mod, k) => secsOf(mod).find(s => s.n === k) || { n: k, title: "", desc: "", type: "notes" };
+const secByType = (mod, type) => (secsOf(mod).find(s => s.type === type) || {}).n || 0;
+const secC = (mod, k) => secOf(mod, k).c || k;          // số màu (--s1…--s10) của một mục
+// Chuyên khoa đang xem: theo đường dẫn, nếu không có thì chuyên khoa xem lần trước
+function curMod() {
+  const h = decodeURIComponent(location.hash.slice(1)), a = h.match(/^\/m\/([^/]+)\//), b = h.match(/^\/n\/([^/]+)/);
+  const m = a && MODULES[a[1]] ? a[1] : (b && byId[b[1]] ? byId[b[1]].module : null);
+  if (m) { try { localStorage.setItem("ykkb_mod", m); } catch {} return m; }
+  let saved = null; try { saved = localStorage.getItem("ykkb_mod"); } catch {}
+  return saved && MODULES[saved] ? saved : Object.keys(MODULES)[0];
+}
 // Số hiển thị trong trang bệnh: 5.1–5.7 (số nội bộ 3,4,5,6,7,10,8); 9 = Tóm tắt
 const DISPNUM = { 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 10: 6, 8: 7 };
-const dnum = n => n === 9 ? "★" : "5." + DISPNUM[n];
+const dnum = (n, mod) => n === 9 ? "★" : (secByType(mod || curMod(), "diseases") || 5) + "." + DISPNUM[n];
 
-// Mục của thanh công cụ (1–9) mà một bài chung thuộc về.
+// Mục của thanh module mà một bài thuộc về (số mục lấy từ _module.json của module đó).
 function sectionOfNote(n) {
+  const mod = n.module;
   if (n.kind === "overview") return 1;
-  if (n.kind === "disease") return 5;
-  if (n.kind === "sources") return 8;
-  if (n.section) return n.section;           // gán trong frontmatter: section: 2, 3, 4 hoặc 6
-  return 2;                                  // mặc định: Nền tảng
+  if (n.kind === "disease") return secByType(mod, "diseases") || 5;
+  if (n.kind === "sources") return secByType(mod, "sources") || 9;
+  if (n.section) return n.section;           // gán trong frontmatter: section: <số mục>
+  return secByType(mod, "groups") || 2;      // mặc định: mục có nhóm bài (Nền tảng)
 }
 
 // "Theo dõi" tách khỏi "Tiên lượng – Dự phòng": các tiêu đề ### bắt đầu bằng "Theo dõi"
@@ -240,32 +244,41 @@ document.addEventListener("click", e => {
 
 // ---- thanh bên: mục lục thu gọn theo khung 1–9 ----
 const diseases = () => NOTES.filter(n => n.kind === "disease").sort((a, b) => (a.order || 99) - (b.order || 99));
-// 4 nhóm của mục Nền tảng: tên trong frontmatter (group), tiêu đề trên trang và tên ở thanh bên
-const GROUP_ORDER = ["Cơ chế", "Nguyên nhân", "Giải phẫu bệnh, xâm lấn, di căn, miễn dịch", "Phòng ngừa và tầm soát", "Điều trị và chăm sóc"];
-const GROUP_PAGE = { "Giải phẫu bệnh, xâm lấn, di căn, miễn dịch": "Đặc điểm – giải phẫu bệnh, xâm lấn, di căn, miễn dịch" };
-const GROUP_SIDE = { "Giải phẫu bệnh, xâm lấn, di căn, miễn dịch": "Đặc điểm" };
-const gTitle = g => GROUP_PAGE[g] || g, gSide = g => GROUP_SIDE[g] || g, gId = g => "grp-" + GROUP_ORDER.indexOf(g);
+// Nhóm bài của mục kiểu "groups": thứ tự, tiêu đề trang và tên ở thanh bên khai báo trong _module.json
+const groupsOf = mod => ((secsOf(mod).find(s => s.type === "groups") || {}).groups || []);
+const gKey = g => typeof g === "string" ? g : g.key;
+const gInfo = (mod, g) => groupsOf(mod).find(x => gKey(x) === g) || {};
+const gTitle = (mod, g) => gInfo(mod, g).page || g, gSide = (mod, g) => gInfo(mod, g).side || g;
+function groupList(mod, k) {
+  const present = [...new Set(NOTES.filter(n => n.module === mod && n.kind === "foundation" && sectionOfNote(n) === k).map(n => n.group || "Khác"))];
+  const ord = groupsOf(mod).map(gKey);
+  return [...ord.filter(g => present.includes(g)), ...present.filter(g => !ord.includes(g))];
+}
+const gId = (mod, k, g) => "grp-" + groupList(mod, k).indexOf(g);
 function tree(cur, sec) {
-  const mods = [...new Set(NOTES.map(n => n.module))];
-  const curN = byId[cur], curSec = curN ? sectionOfNote(curN) : +((location.hash.match(/^#\/m\/[^/]+\/(\d)$/) || [])[1] || 0);   // đang ở trang mục thì mở đúng mục đó
-  $("#tree").innerHTML = mods.map(mod => {
+  const curN = byId[cur], curSec = curN ? sectionOfNote(curN) : +((location.hash.match(/^#\/m\/[^/]+\/(\d+)$/) || [])[1] || 0);   // đang ở trang mục thì mở đúng mục đó
+  const here = curMod(), hashM = location.hash.match(/^#\/m\/([^/]+)\/(\d+)$/) || [];
+  $("#tree").innerHTML = Object.keys(MODULES).map(mod => {
     const ns = NOTES.filter(n => n.module === mod), di = diseases().filter(n => n.module === mod);
+    const isHere = mod === here;
     const link = (n, s, label, c) => `<a href="#/n/${n.id}${s ? "/" + s : ""}" class="${n.id === cur && (!s || +s === sec) ? "on" : ""}"${c ? ` style="--c:var(--${c})"` : ""}>${esc(label || n.short || n.title)}</a>`;
     const gen = k => ns.filter(n => n.kind === "foundation" && sectionOfNote(n) === k).sort((x, y) => (x.order || 99) - (y.order || 99));
-    const isDis = curN && curN.kind === "disease", open = c => c ? " open" : "";
-    const sub = (k, title, body, isOpen) => `<details${open(isOpen)} style="--c:var(--s${k})"><summary><b>${k}</b> ${title}</summary>${body}</details>`;
-    const top = (k, label, on) => `<a class="top ${on ? "on" : ""}" style="--c:var(--s${k})" href="#/m/${mod}/${k}"><b>${k}</b> ${label}</a>`;
-    const ms = h => (location.hash.match(/^#\/m\/[^/]+\/(\d)$/) || [])[1] === String(h);
-    return `<details class="mod" open><summary>${esc(MODULES[mod] || mod)}</summary>
-      ${top(1, "Tổng quan", curSec === 1 && !ms(8))}
-      ${sub(2, "Nền tảng",GROUP_ORDER.filter(g => gen(2).some(n => (n.group || "Khác") === g)).map(g => `<a href="#/m/${mod}/2" data-g="${gId(g)}" class="${curSec === 2 && curN && curN.group === g ? "on" : ""}">${esc(gSide(g))}</a>`).join(""), curSec === 2)}
-      ${sub(3, "Triệu chứng học", `<a href="#/m/${mod}/3">Khái quát</a>` + gen(3).map(n => link(n)).join("") + `<div class="lay">Theo bệnh</div>` + di.map(d => link(d, 4, d.short || d.title)).join(""), curSec === 3 || (isDis && sec === 4))}
-      ${sub(4, "Cận lâm sàng", `<a href="#/m/${mod}/4">Khái quát phương tiện, vai trò</a>` + gen(4).map(n => link(n)).join("") + `<div class="lay">Theo bệnh</div>` + di.map(d => link(d, 5, d.short || d.title)).join(""), curSec === 4 || (isDis && (sec === 5 || sec === 6)))}
-      ${sub(5, "Bệnh học",di.map(d => `<details${open(isDis && curN.id === d.id)}><summary>${esc(d.short || d.title)}</summary>${SECS.map(([num, name]) => link(d, num, dnum(num) + " " + name, SECCOL[num])).join("")}${link(d, 9, "★ Tóm tắt", "tsum")}</details>`).join(""), isDis)}
-      ${top(6, "Bệnh án", curSec === 6)}
-      ${top(7, "Tóm tắt", curSec === 7)}
-      ${top(8, "Nguồn", curSec === 8)}
-      ${top(9, "Tự đánh giá", curSec === 9)}
+    const isDis = !!(curN && curN.kind === "disease" && curN.module === mod), open = c => c ? " open" : "";
+    const sub = (s, body, isOpen) => `<details${open(isOpen)} style="--c:var(--s${secC(mod, s.n)})"><summary><b>${s.n}</b> ${esc(s.title)}</summary>${body}</details>`;
+    const top = (s, on) => `<a class="top ${on ? "on" : ""}" style="--c:var(--s${secC(mod, s.n)})" href="#/m/${mod}/${s.n}"><b>${s.n}</b> ${esc(s.title)}</a>`;
+    const ms = h => hashM[1] === mod && hashM[2] === String(h);
+    const srcN = secByType(mod, "sources");
+    const rows = secsOf(mod).map(s => {
+      const on = isHere && curSec === s.n;
+      if (s.type === "overview") return top(s, on && !ms(srcN));
+      if (s.type === "groups") return sub(s, groupList(mod, s.n).map(g => `<a href="#/m/${mod}/${s.n}" data-g="${gId(mod, s.n, g)}" class="${on && curN && (curN.group || "Khác") === g ? "on" : ""}">${esc(gSide(mod, g))}</a>`).join(""), on);
+      if (s.type === "diseases") return sub(s, di.map(d => `<details${open(isDis && curN.id === d.id)}><summary>${esc(d.short || d.title)}</summary>${SECS.map(([num, name]) => link(d, num, dnum(num, mod) + " " + name, SECCOL[num])).join("")}${link(d, 9, "★ Tóm tắt", "tsum")}</details>`).join(""), isDis);
+      if (s.type === "notes" && s.byDisease) return sub(s, `<a href="#/m/${mod}/${s.n}">${esc(s.overviewLabel || "Khái quát")}</a>` + gen(s.n).map(n => link(n)).join("") + `<div class="lay">Theo bệnh</div>` + di.map(d => link(d, s.byDisease[0], d.short || d.title)).join(""), on || (isDis && isHere && s.byDisease.includes(sec)));
+      if (s.type === "notes" && s.tree === "list") return sub(s, `<a href="#/m/${mod}/${s.n}">${esc(s.overviewLabel || "Xem cả mục")}</a>` + gen(s.n).map(n => link(n)).join(""), on);
+      return top(s, on);
+    });
+    return `<details class="mod"${isHere ? " open" : ""}><summary>${esc(MODULES[mod] || mod)}</summary>
+      ${rows.join("\n      ")}
     </details>`;
   }).join("");
 }
@@ -305,8 +318,8 @@ function renderResults() {
   box.innerHTML = hits.length ? hits.map(({ n, pos }) => {
     const sec = pos >= 0 ? secAt(n, pos) : 0;
     const href = `#/n/${n.id}${sec ? "/" + sec : ""}`;
-    const ms = MODSECS.find(s => s[0] === sectionOfNote(n));
-    const where = n.kind === "disease" ? (sec ? `${dnum(sec)} ${SECNAME[sec]}` : "Bệnh học") : (n.kind === "overview" ? "Tổng quan" : (ms ? ms[1] : "Nền tảng"));
+    const sc = secOf(n.module, sectionOfNote(n));
+    const where = n.kind === "disease" ? (sec ? `${dnum(sec, n.module)} ${SECNAME[sec]}` : (sc.title || "Bệnh học")) : (n.kind === "overview" ? "Tổng quan" : (sc.title || "Nền tảng"));
     const snip = pos >= 0 ? esc(plain(n.body.slice(Math.max(0, pos - 40), pos + 90))) : "";
     return `<a href="${href}"><b>${esc(n.short || n.title)}</b> <span class="where">${esc(where)}</span>${snip ? `<small>…${snip}…</small>` : ""}</a>`;
   }).join("") : '<div class="none">Không có kết quả.</div>';
@@ -379,19 +392,26 @@ function badge() { const el = $("#dueBadge"); if (el) el.textContent = dueCards(
 
 // ---- trang ----
 function hasPareto(d) { return /^## 9\.[^\n]*Pareto/m.test(d.body); }
-function diseaseGrid(ds) {
+function diseaseGrid(ds, mod = curMod()) {
   return `<div class="dgrid">${ds.map(d => { const { secs } = diseaseParts(d); return `<article class="dcard"><a class="dtitle" href="#/n/${d.id}/3">${esc(d.short || d.title)}</a>
-      <div class="dchips">${SECS.map(([n, t, c]) => secs[n] ? `<a class="chip" style="--c:var(--${c})" href="#/n/${d.id}/${n}" title="${dnum(n)} ${esc(t)}">${dnum(n)}</a>` : `<span class="chip off" title="${dnum(n)} ${esc(t)} (chưa có)">${dnum(n)}</span>`).join("")}</div>
+      <div class="dchips">${SECS.map(([n, t, c]) => secs[n] ? `<a class="chip" style="--c:var(--${c})" href="#/n/${d.id}/${n}" title="${dnum(n, mod)} ${esc(t)}">${dnum(n, mod)}</a>` : `<span class="chip off" title="${dnum(n, mod)} ${esc(t)} (chưa có)">${dnum(n, mod)}</span>`).join("")}</div>
       <div class="dfoot">${hasPareto(d) ? `<a class="pill9" href="#/n/${d.id}/9">★ Tóm tắt</a>` : '<span class="meta">Tóm tắt: chưa có</span>'}${(d.khung || []).map(k => `<a class="chip wide" href="#/khung/${k}">STT ${k}</a>`).join("")}</div></article>`; }).join("")}</div>
-    <p class="legend2 meta">${SECS.map(([n, t, c]) => `<span><i class="dot" style="background:var(--${c})"></i>${dnum(n)} ${esc(t)}</span>`).join("")}</p>`;
+    <p class="legend2 meta">${SECS.map(([n, t, c]) => `<span><i class="dot" style="background:var(--${c})"></i>${dnum(n, mod)} ${esc(t)}</span>`).join("")}</p>`;
 }
 
 function home() {
-  const ds = diseases(), mod = Object.keys(MODULES)[0], mname = MODULES[mod] || mod;
+  const ds = diseases(), mods = Object.keys(MODULES), cm = curMod();
   const fo = NOTES.filter(n => n.kind === "foundation").length;
   const nKhung = window.KHUNG ? window.KHUNG.items.length : 128;
   const recent = (store.get(RK, []) || []).map(r => ({ ...r, n: byId[r.id] })).filter(r => r.n).slice(0, 4);
-  const due = dueCards().length;
+  const due = dueCards().length, sumN = secByType(cm, "summary"), cardN = secByType(cm, "cards");
+  const article = mod => {
+    const dsm = ds.filter(n => n.module === mod), fom = NOTES.filter(n => n.module === mod && n.kind === "foundation").length, sN = secByType(mod, "summary");
+    return `<article class="spec"><div class="spechead"><span class="sdot"></span><div><h3>${esc(MODULES[mod] || mod)}</h3><small>${dsm.length} bệnh · ${fom} bài chung</small></div>
+      <div class="specact"><a class="btn p" href="#/m/${mod}/1">Tổng quan module</a>${sN ? `<a class="btn" href="#/m/${mod}/${sN}">Tóm tắt Pareto</a>` : ""}</div></div>
+      <ol class="stepper">${secsOf(mod).map(s => `<li style="--c:var(--s${secC(mod, s.n)})"><a href="#/m/${mod}/${s.n}"><b>${s.n}</b>${esc(s.title)}</a></li>`).join("")}</ol>
+    </article>`;
+  };
   $("#main").style.maxWidth = "1080px";
   $("#main").innerHTML = `
   <section class="hero">
@@ -399,20 +419,15 @@ function home() {
     <button class="herosearch" id="heroSearch"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg> Tìm bài, bệnh, thuốc… <kbd>/</kbd></button>
     <div class="stats"><div><b>${NOTES.length}</b><span>bài</span></div><div><b>${ds.length}</b><span>bệnh</span></div><div><b>${fo}</b><span>bài chung</span></div><div><b>${nKhung}</b><span>vấn đề khung thi</span></div></div>
   </section>
-  ${recent.length ? `<section><h2>Tiếp tục</h2><div class="rgrid">${recent.map(r => `<a class="rcard" href="#/n/${r.id}${r.sec ? "/" + r.sec : ""}"><small>${r.sec ? dnum(r.sec) + " · " + SECNAME[r.sec] : esc(r.n.group || (r.n.kind === "overview" ? "Tổng quan" : "Bài"))}</small><b>${esc(r.n.short || r.n.title)}</b></a>`).join("")}</div></section>` : ""}
-  <section><h2>Chuyên khoa</h2>
-    <article class="spec"><div class="spechead"><span class="sdot"></span><div><h3>${esc(mname)}</h3><small>${ds.length} bệnh · ${fo} bài chung</small></div>
-      <div class="specact"><a class="btn p" href="#/m/${mod}/1">Tổng quan module</a><a class="btn" href="#/m/${mod}/7">Tóm tắt Pareto</a></div></div>
-      <ol class="stepper">${MODSECS.map(([n, t]) => `<li style="--c:var(--s${n})"><a href="#/m/${mod}/${n}"><b>${n}</b>${esc(t)}</a></li>`).join("")}</ol>
-    </article>
-  </section>
-  <section><h2>Bệnh</h2>${diseaseGrid(ds)}</section>
+  ${recent.length ? `<section><h2>Tiếp tục</h2><div class="rgrid">${recent.map(r => `<a class="rcard" href="#/n/${r.id}${r.sec ? "/" + r.sec : ""}"><small>${r.sec ? dnum(r.sec, r.n.module) + " · " + SECNAME[r.sec] : esc(r.n.group || (r.n.kind === "overview" ? "Tổng quan" : "Bài"))}</small><b>${esc(r.n.short || r.n.title)}</b></a>`).join("")}</div></section>` : ""}
+  <section><h2>Chuyên khoa</h2>${mods.map(article).join("")}</section>
+  ${mods.map(mod => { const dsm = ds.filter(n => n.module === mod); return dsm.length ? `<section><h2>Bệnh${mods.length > 1 ? " · " + esc(MODULES[mod] || mod) : ""}</h2>${diseaseGrid(dsm, mod)}</section>` : ""; }).join("")}
   <section><h2>Công cụ</h2>
     <div class="tiles">
-      <a class="tile" href="#/khung"><b>Khung 128 vấn đề</b><span>QĐ 22 + sách, lọc theo ung bướu</span></a>
-      <a class="tile" href="#/m/ung-buou/7"><b>Tóm tắt Pareto</b><span>Một trang, từng bệnh</span></a>
+      <a class="tile" href="#/khung"><b>Khung 128 vấn đề</b><span>QĐ 22 + sách, lọc theo chuyên khoa</span></a>
+      ${sumN ? `<a class="tile" href="#/m/${cm}/${sumN}"><b>Tóm tắt Pareto</b><span>Một trang, từng bệnh</span></a>` : ""}
       <a class="tile" href="#/graph"><b>Sơ đồ liên kết</b><span>Mắc xích giữa các bài</span></a>
-      <a class="tile" href="#/m/ung-buou/9"><b>Tự đánh giá</b><span>${due} thẻ đến hạn</span></a>
+      ${cardN ? `<a class="tile" href="#/m/${cm}/${cardN}"><b>Tự đánh giá</b><span>${due} thẻ đến hạn</span></a>` : ""}
     </div>
   </section>`;
   $("#heroSearch").onclick = focusSearch;
@@ -432,31 +447,28 @@ function noteToggles(list, openSet) {
 
 // Trang giới thiệu của từng mục trên thanh công cụ (2–5); openId mở sẵn một bài khi đi từ #/n/<id>
 function modSection(mod, k, openId) {
-  const [, title, desc] = MODSECS.find(s => s[0] === k) || [k, "", ""];
+  const sp = secOf(mod, k), { title, desc, type } = sp;
   const ns = NOTES.filter(n => n.module === mod), di = diseases().filter(n => n.module === mod);
   const gen = ns.filter(n => n.kind === "foundation" && sectionOfNote(n) === k).sort((x, y) => (x.order || 99) - (y.order || 99));
-  const groups = k === 2 ? [...new Set(gen.map(n => n.group || "Khác"))].sort((x, y) => (GROUP_ORDER.indexOf(x) + 99) % 99 - (GROUP_ORDER.indexOf(y) + 99) % 99) : [];
-  const flat = k === 2 ? groups.flatMap(g => gen.filter(n => (n.group || "Khác") === g)) : gen;
-  const openSet = openByDefault(flat, openId);
+  const groups = type === "groups" ? groupList(mod, k) : [];
+  const flat = type === "groups" ? groups.flatMap(g => gen.filter(n => (n.group || "Khác") === g)) : gen;
+  const openSet = sp.openAll ? new Set(gen.map(n => n.id)) : openByDefault(flat, openId);
   const allBtn = gen.length ? `<p><button class="btn" data-act="toggleall" data-scope="details.note-t">Mở / đóng tất cả</button></p>` : "";
-  const byDisease = (secNums) => `<div class="rgrid">${di.map(d => `<div class="rcard"><b>${esc(d.short || d.title)}</b>${secNums.map(s => `<a class="chip wide" href="#/n/${d.id}/${s}">${dnum(s)} ${esc(SECNAME[s])}</a>`).join("")}</div>`).join("")}</div>`;
+  const byDisease = (secNums) => `<div class="rgrid">${di.map(d => `<div class="rcard"><b>${esc(d.short || d.title)}</b>${secNums.map(s => `<a class="chip wide" href="#/n/${d.id}/${s}">${dnum(s, mod)} ${esc(SECNAME[s])}</a>`).join("")}</div>`).join("")}</div>`;
   let body = "";
-  if (k === 2) {
-    body = allBtn + groups.map(g => `<section id="${gId(g)}"><h2>${esc(gTitle(g))}</h2>${noteToggles(flat.filter(n => (n.group || "Khác") === g), openSet)}</section>`).join("");
-  } else if (k === 3) {
-    body = `<section><h2>Bài khái quát</h2>${gen.length ? allBtn + noteToggles(gen, openSet) : "<p class='meta'>Chưa có.</p>"}</section>
-      <section><h2>Triệu chứng học theo từng bệnh</h2>${byDisease([4])}</section>`;
-  } else if (k === 4) {
-    body = `<section><h2>Bài khái quát: phương tiện và vai trò</h2>${gen.length ? allBtn + noteToggles(gen, openSet) : "<p class='meta'>Chưa có.</p>"}</section>
-      <section><h2>Cận lâm sàng và chẩn đoán theo từng bệnh</h2>${byDisease([5, 6])}</section>`;
-  } else if (k === 5) {
-    body = `<section>${diseaseGrid(di)}</section>`;
-  } else if (k === 7) {
+  if (type === "groups") {
+    body = allBtn + groups.map(g => `<section id="${gId(mod, k, g)}"><h2>${esc(gTitle(mod, g))}</h2>${noteToggles(flat.filter(n => (n.group || "Khác") === g), openSet)}</section>`).join("");
+  } else if (type === "notes" && sp.byDisease) {
+    body = `<section><h2>${esc(sp.genTitle || "Bài khái quát")}</h2>${gen.length ? allBtn + noteToggles(gen, openSet) : "<p class='meta'>Chưa có.</p>"}</section>
+      <section><h2>${esc(sp.disTitle || "Theo từng bệnh")}</h2>${byDisease(sp.byDisease)}</section>`;
+  } else if (type === "diseases") {
+    body = `<section>${diseaseGrid(di, mod)}</section>`;
+  } else if (type === "summary") {
     body = `<p><button class="btn" data-act="toggleall">Mở / đóng tất cả</button></p>` + di.map((d, i) => {
       const s9 = diseaseParts(d).secs[9]; if (!s9) return "";
       return `<details class="fold pareto"${i === 0 ? " open" : ""}><summary>${esc(d.short || d.title)} <a class="chip wide" href="#/n/${d.id}/9">mở trang bệnh</a></summary>${md(relabel(summaryOnly(s9.body)).replace(/^###\s+Con số và mốc phải nhớ\s*$/m, ""))}</details>`;
     }).join("");
-  } else if (k === 8) {
+  } else if (type === "sources") {
     const st = ns.find(n => n.kind === "sources");
     body = (st ? `<section>${md(st.body)}</section>` : "") +
       `<section><h2>Nguồn theo từng bệnh</h2>` + di.map(d => {
@@ -465,9 +477,9 @@ function modSection(mod, k, openId) {
         return `<details class="fold"><summary>${esc(d.short || d.title)}</summary>${d.source ? `<p class="meta">Nguồn chính: ${esc(d.source)}</p>` : ""}${doc ? `<h3>Nguồn tài liệu</h3>${md(doc)}` : ""}${ext ? `<h3>Nguồn ngoài tài liệu</h3>${md(ext)}` : ""}</details>`;
       }).join("") + `</section>` +
       `<section><h2>Nguồn theo từng bài chung</h2><div class="tw"><table><thead><tr><th>Bài</th><th>Nguồn</th></tr></thead><tbody>${ns.filter(n => n.kind === "foundation").map(n => `<tr><td><a href="#/n/${n.id}">${esc(n.short || n.title)}</a></td><td>${esc(n.source || "")}</td></tr>`).join("")}</tbody></table></div></section>`;
-  } else if (k === 6) {   // Bệnh án: các bài của mục, mở sẵn để đọc liền
-    body = gen.length ? allBtn + noteToggles(gen, new Set(gen.map(n => n.id))) : "<p class='meta'>Chưa có.</p>";
-  } else if (k === 9) {
+  } else if (type === "notes") {   // mục gồm các bài; "openAll": true trong _module.json thì mở sẵn để đọc liền
+    body = gen.length ? allBtn + noteToggles(gen, openSet) : "<p class='meta'>Chưa có.</p>";
+  } else if (type === "cards") {
     const withCards = ns.map(n => ({ n, c: cardsOf(n) })).filter(x => x.c.length);
     const total = withCards.reduce((s, x) => s + x.c.length, 0);
     body = `<div class="callout note"><div class="ct">Ghi chú</div><p>Các thẻ tự kiểm tra đã tạo được <b>lưu lại</b>. Hiện <b>tạm thời chưa xây dựng thêm</b>.</p></div>
@@ -476,8 +488,8 @@ function modSection(mod, k, openId) {
   }
   $("#main").style.maxWidth = "1080px";
   $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[mod] || mod, href: `#/m/${mod}/1` }])}
-    <header class="cover" style="--c:var(--s${k})"><h1>${k}. ${esc(title)}</h1><p>${esc(desc)}</p></header>
-    <div class="modpage" style="--c:var(--s${k})">${body}</div>`;
+    <header class="cover" style="--c:var(--s${secC(mod, k)})"><h1>${k}. ${esc(title)}</h1><p>${esc(desc)}</p></header>
+    <div class="modpage" style="--c:var(--s${secC(mod, k)})">${body}</div>`;
   const target = openId && document.getElementById("t-" + openId), grp = jumpTo && document.getElementById(jumpTo);
   jumpTo = null;
   if (target) target.scrollIntoView(); else if (grp) grp.scrollIntoView(); else window.scrollTo(0, 0);
@@ -517,10 +529,10 @@ function diseasePage(n, sec) {
   sec = isSummary ? 9 : (secs[sec] ? sec : have[0]);
   const khung = (n.khung || []).map(k => `<a class="chip wide" href="#/khung/${k}">Khung STT ${k}</a>`).join("");
   pushRecent(n.id, sec);
-  const mod = n.module, body = isSummary ? summaryOnly(secs[9].body) : secs[sec].body;
+  const mod = n.module, dk = secByType(mod, "diseases") || 5, body = isSummary ? summaryOnly(secs[9].body) : secs[sec].body;
   const col = `var(--${SECCOL[sec]})`, cont = withToc(md(relabel(body)));
-  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[mod] || mod, href: `#/m/${mod}/1` }, { t: "5 Bệnh học", href: `#/m/${mod}/5` }])}
-    <header class="cover" style="--c:var(--s5)">
+  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[mod] || mod, href: `#/m/${mod}/1` }, { t: `${dk} ${secOf(mod, dk).title}`, href: `#/m/${mod}/${dk}` }])}
+    <header class="cover" style="--c:var(--s${secC(mod, dk)})">
     <h1>${esc(n.title)}</h1>
     <div class="meta">${n.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")} ${khung}</div></header>
     <div class="dtabs">${SECS.filter(([num]) => secs[num]).map(([num, t, c]) => `<a class="dt${num === sec ? " on" : ""}" style="--c:var(--${c})" href="#/n/${n.id}/${num}"><b>${dnum(num)}</b> ${t}</a>`).join("")}${secs[9] ? `<a class="dt sum${isSummary ? " on" : ""}" href="#/n/${n.id}/9">★ Tóm tắt</a>` : ""}</div>
@@ -535,15 +547,15 @@ function note(id, sec) {
   const n = byId[id];
   if (!n) { $("#main").innerHTML = "<h1>Không tìm thấy bài</h1>"; return; }
   if (n.kind === "disease") return diseasePage(n, +sec || 0);
-  const k = sectionOfNote(n), mod = n.module, ms = MODSECS.find(s => s[0] === k);
+  const k = sectionOfNote(n), mod = n.module, sp = secOf(mod, k);
   pushRecent(id, 0);
-  if (n.kind === "foundation" && [2, 3, 4, 6].includes(k)) return modSection(mod, k, id);
+  if (n.kind === "foundation" && ["groups", "notes"].includes(sp.type)) return modSection(mod, k, id);
   const cont = withToc(md(n.body));
-  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[mod] || mod, href: `#/m/${mod}/1` }, ...(k > 1 ? [{ t: `${k} ${ms[1]}`, href: `#/m/${mod}/${k}` }] : [{ t: "1 Tổng quan" }])])}
-    <header class="cover" style="--c:var(--s${k})">
+  $("#main").innerHTML = `${crumb([{ t: "Trang chủ", href: "#/" }, { t: MODULES[mod] || mod, href: `#/m/${mod}/1` }, ...(k > 1 ? [{ t: `${k} ${sp.title}`, href: `#/m/${mod}/${k}` }] : [{ t: "1 Tổng quan" }])])}
+    <header class="cover" style="--c:var(--s${secC(mod, k)})">
     <h1>${esc(n.title)}</h1>
     <div class="meta">${n.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")}${n.source ? ` Nguồn: ${esc(n.source)}` : ""}</div></header>
-    <div class="notepage" style="--c:var(--s${k})">${tocBox(cont.items)}${cont.html}</div>`;
+    <div class="notepage" style="--c:var(--s${secC(mod, k)})">${tocBox(cont.items)}${cont.html}</div>`;
   window.scrollTo(0, 0);
 }
 
@@ -587,7 +599,7 @@ function graph() {
   const list = NOTES.filter(keep);
   const nodes = list.map((n, i) => ({ n, x: W / 2 + Math.cos(i * 2.4) * (W / 3), y: H * ly[n.layer] + Math.sin(i) * 30, vx: 0, vy: 0 }));
   const idx = Object.fromEntries(nodes.map((o, i) => [o.n.id, i]));
-  const edges = list.filter(n => n.id !== "ung-buou-tong-quan").flatMap(n => (out[n.id] || []).filter(t => t in idx).map(t => [idx[n.id], idx[t]]));
+  const edges = list.filter(n => n.kind !== "overview").flatMap(n => (out[n.id] || []).filter(t => t in idx).map(t => [idx[n.id], idx[t]]));
   const nb = nodes.map(() => new Set());
   edges.forEach(([i, j]) => { nb[i].add(j); nb[j].add(i); });
   const rep = 90000 / Math.max(1, Math.sqrt(nodes.length) * 4);
@@ -619,11 +631,14 @@ function graph() {
 
 // ---- thanh module: Ung bướu › 1 … 5 ----
 function renderModbar(active) {
-  const mod = Object.keys(MODULES)[0];
-  $("#modbar").innerHTML = `<a class="modname" href="#/m/${mod}/1">${esc(MODULES[mod] || mod)}<i>›</i></a>` +
-    MODSECS.map(([n, t]) => `<a class="modsec${n === active ? " on" : ""}" style="--c:var(--s${n})" href="#/m/${mod}/${n}"><b>${n}</b>${esc(t)}</a>`).join("");
+  const mod = curMod(), mods = Object.keys(MODULES);
+  $("#modbar").innerHTML = (mods.length > 1
+      ? `<select class="modpick" aria-label="Chọn chuyên khoa">${mods.map(m => `<option value="${m}"${m === mod ? " selected" : ""}>${esc(MODULES[m] || m)}</option>`).join("")}</select>`
+      : `<a class="modname" href="#/m/${mod}/1">${esc(MODULES[mod] || mod)}<i>›</i></a>`) +
+    secsOf(mod).map(s => `<a class="modsec${s.n === active ? " on" : ""}" style="--c:var(--s${s.c || s.n})" href="#/m/${mod}/${s.n}"><b>${s.n}</b>${esc(s.title)}</a>`).join("");
   const on = $("#modbar .modsec.on"); if (on) on.scrollIntoView({ inline: "center", block: "nearest" });   // khổ hẹp: cuộn tới mục đang chọn
 }
+document.addEventListener("change", e => { const sel = e.target.closest("select.modpick"); if (sel) location.hash = `#/m/${sel.value}/1`; });
 
 // ---- định tuyến ----
 function route() {
@@ -631,8 +646,8 @@ function route() {
   window.scrollTo(0, 0);   // chuyển trang luôn bắt đầu từ đầu trang (mục/bài có điểm đến sẽ tự cuộn sau)
   $("#main").style.maxWidth = ""; $("#side").classList.remove("open");
   let h = decodeURIComponent(location.hash.slice(1)) || "/";
-  if (h === "/pareto") h = "/m/ung-buou/7";
-  const m = h.match(/^\/n\/([^/]+)(?:\/(\d+))?$/), mm = h.match(/^\/m\/([^/]+)\/(\d)$/);
+  if (h === "/pareto") h = `/m/${curMod()}/${secByType(curMod(), "summary")}`;
+  const m = h.match(/^\/n\/([^/]+)(?:\/(\d+))?$/), mm = h.match(/^\/m\/([^/]+)\/(\d+)$/);
   let sec = 0, modActive = 0;
   const kh = h.match(/^\/khung(?:\/(\d+))?$/);
   if (kh) { $("#main").style.maxWidth = "1000px"; window.renderKhung($("#main"), kh[1]); }
@@ -643,8 +658,9 @@ function route() {
   }
   else if (m) { sec = note(m[1], m[2]) || 0; modActive = byId[m[1]] ? sectionOfNote(byId[m[1]]) : 0; }
   else if (h === "/graph") graph(); else if (h === "/cards") cards(); else home();
-  const navKey = kh ? "khung" : h === "/graph" ? "graph" : h === "/cards" ? "cards" : (mm && +mm[2] === 7) ? "summary" : (!m && !mm) ? "home" : "";
+  const navKey = kh ? "khung" : h === "/graph" ? "graph" : h === "/cards" ? "cards" : (mm && secOf(mm[1], +mm[2]).type === "summary") ? "summary" : (!m && !mm) ? "home" : "";
   document.querySelectorAll("[data-nav]").forEach(x => x.classList.toggle("on", x.dataset.nav === navKey));
+  document.querySelectorAll('[data-nav="summary"]').forEach(x => { const cm = curMod(); x.setAttribute("href", `#/m/${cm}/${secByType(cm, "summary") || 1}`); });
   renderModbar(modActive);
   tree(m && m[1], sec || (m && +m[2]) || 0);
   const bd = $("#build"); if (bd) bd.textContent = window.BUILD ? "Bản dựng: " + window.BUILD : "";

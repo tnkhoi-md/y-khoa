@@ -13,7 +13,7 @@
   /* màu theo chuyên khoa/tab bệnh */
   --nen:#2563eb;--trieuchung:#0891b2;--benh:#c2410c;--cls:#7c3aed;--dieutri:#0f766e;--phacdo:#b91c1c;
   /* màu theo mục 1–9 của thanh công cụ */
-  --s1:#475569;--s2:#2563eb;--s3:#0e7490;--s4:#6d28d9;--s5:#c2410c;--s6:#be185d;--s7:#b45309;--s8:#4b5563;--s9:#15803d;
+  --s1:#475569;--s2:#2563eb;--s3:#0e7490;--s4:#6d28d9;--s5:#c2410c;--s6:#b91c1c;--s7:#be185d;--s8:#b45309;--s9:#4b5563;--s10:#15803d;
   /* hộp màu theo ý nghĩa */
   --c-key:#2e8b5e;--b-key:#e9f5ee;      /* ý chính, nguyên tắc */
   --c-tip:#2b7a80;--b-tip:#e6f2f3;      /* mẹo nhớ */
@@ -30,7 +30,7 @@
   --bg:#0e1613;--panel:#152019;--ink:#e3eee8;--mute:#9bb1a6;--line:#24342c;
   --brand:#4cc38a;--brand-d:#8ee0b8;--brand-bg:#15302a;--th:#246b4d;--teal:#5fc4cb;
   --nen:#60a5fa;--trieuchung:#22d3ee;--benh:#fb923c;--cls:#a78bfa;--dieutri:#5eead4;--phacdo:#f87171;
-  --s1:#94a3b8;--s2:#60a5fa;--s3:#22d3ee;--s4:#a78bfa;--s5:#fb923c;--s6:#f472b6;--s7:#fbbf24;--s8:#a1a1aa;--s9:#4ade80;
+  --s1:#94a3b8;--s2:#60a5fa;--s3:#22d3ee;--s4:#a78bfa;--s5:#fb923c;--s6:#f87171;--s7:#f472b6;--s8:#fbbf24;--s9:#a1a1aa;--s10:#4ade80;
   --c-key:#6fd6a4;--b-key:#15302a;--c-tip:#6fd0d6;--b-tip:#14302f;--c-warn:#f5c061;--b-warn:#352a12;
   --c-red:#ff8f85;--b-red:#3a1c1b;--c-doc:#93b8ff;--b-doc:#172845;--c-ext:#ffb37a;--b-ext:#3a2612;
   --c-note:#b5c4bc;--b-note:#1f2a24;--hl:#5a4b00;
@@ -39,7 +39,7 @@
   --bg:#0e1613;--panel:#152019;--ink:#e3eee8;--mute:#9bb1a6;--line:#24342c;
   --brand:#4cc38a;--brand-d:#8ee0b8;--brand-bg:#15302a;--th:#246b4d;--teal:#5fc4cb;
   --nen:#60a5fa;--trieuchung:#22d3ee;--benh:#fb923c;--cls:#a78bfa;--dieutri:#5eead4;--phacdo:#f87171;
-  --s1:#94a3b8;--s2:#60a5fa;--s3:#22d3ee;--s4:#a78bfa;--s5:#fb923c;--s6:#f472b6;--s7:#fbbf24;--s8:#a1a1aa;--s9:#4ade80;
+  --s1:#94a3b8;--s2:#60a5fa;--s3:#22d3ee;--s4:#a78bfa;--s5:#fb923c;--s6:#f87171;--s7:#f472b6;--s8:#fbbf24;--s9:#a1a1aa;--s10:#4ade80;
   --c-key:#6fd6a4;--b-key:#15302a;--c-tip:#6fd0d6;--b-tip:#14302f;--c-warn:#f5c061;--b-warn:#352a12;
   --c-red:#ff8f85;--b-red:#3a1c1b;--c-doc:#93b8ff;--b-doc:#172845;--c-ext:#ffb37a;--b-ext:#3a2612;
   --c-note:#b5c4bc;--b-note:#1f2a24;--hl:#5a4b00;
@@ -403,3 +403,6 @@ details.kitem[open]>summary{border-bottom:1px solid var(--line)}
   .tabbtn,.dt,#tree a,#tree details>summary,.modsec{min-height:36px}
   #tree a{padding-top:7px;padding-bottom:7px}
 }
+
+/* ô chọn chuyên khoa trên thanh module (hiện khi có từ 2 chuyên khoa trở lên) */
+.modpick{flex:0 0 auto;padding:6px 10px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);font:800 14.5px/1.2 inherit;font-family:inherit;cursor:pointer}

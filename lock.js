@@ -19,7 +19,7 @@ async function decrypt(buf, pw) {
 }
 
 async function start(data) {
-  if (data) { window.BUILD = data.BUILD; window.MODULES = data.MODULES; window.NOTES = data.NOTES; window.KHUNG = data.KHUNG; }
+  if (data) { window.BUILD = data.BUILD; window.MODULES = data.MODULES; window.MODSPEC = data.MODSPEC; window.NOTES = data.NOTES; window.KHUNG = data.KHUNG; }
   await load("khung.js");
   await load("app.js");
   const lock = $("lock"); if (lock) lock.hidden = true;
