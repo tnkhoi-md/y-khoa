@@ -1,6 +1,6 @@
 {
-  "name": "Y khoa KB",
-  "short_name": "Y khoa KB",
+  "name": "Học tập Y khoa",
+  "short_name": "Học tập Y khoa",
   "description": "Kho kiến thức y khoa cá nhân ôn thi chứng chỉ hành nghề.",
   "start_url": "./index.html",
   "scope": "./",
